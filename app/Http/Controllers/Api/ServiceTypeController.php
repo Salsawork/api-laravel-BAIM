@@ -1,15 +1,23 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Http\Controllers\Api;
 
+use App\Http\Controllers\Controller;
 use App\Models\ServiceType;
 use Illuminate\Http\Request;
 
 class ServiceTypeController extends Controller
 {
-    /**
-     * Display a listing of the resource.
-     */
+    public function services()
+    {
+        $data = ServiceType::select('id', 'name')->get();
+    
+        return response()->json([
+            'status' => true,
+            'data' => $data
+        ]);
+    }
+    
     public function index()
     {
         //

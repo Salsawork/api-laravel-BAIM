@@ -20,8 +20,9 @@ class MentorTopic extends Model
         return $this->belongsTo(Mentor::class);
     }
 
-    public function topic_category()
+    public function topic()
     {
         return $this->belongsTo(TopicCategory::class);
     }
+
 }

@@ -15,7 +15,7 @@ return new class extends Migration
             $table->bigIncrements('id');
             $table->unsignedInteger('wallet_id');
             $table->decimal('withdraw_amount',12,2);
-            $table->string('bank_name')->nullable();
+            $table->string('bank_id')->nullable();
             $table->string('bank_account')->nullable();
             $table->enum('status',['pending','approved','rejected','paid'])->default('pending');
         

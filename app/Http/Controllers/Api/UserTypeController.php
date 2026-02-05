@@ -1,15 +1,23 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Http\Controllers\Api;
 
-use App\Models\MentorTopic;
+use App\Http\Controllers\Controller;
+use App\Models\UserType;
 use Illuminate\Http\Request;
 
-class MentorTopicController extends Controller
+class UserTypeController extends Controller
 {
-    /**
-     * Display a listing of the resource.
-     */
+    public function userTypes()
+    {
+        $data = UserType::select('id', 'name')->get();
+
+        return response()->json([
+            'status' => true,
+            'data' => $data
+        ]);
+    }
+
     public function index()
     {
         //
@@ -34,7 +42,7 @@ class MentorTopicController extends Controller
     /**
      * Display the specified resource.
      */
-    public function show(MentorTopic $mentorTopic)
+    public function show(UserType $userType)
     {
         //
     }
@@ -42,7 +50,7 @@ class MentorTopicController extends Controller
     /**
      * Show the form for editing the specified resource.
      */
-    public function edit(MentorTopic $mentorTopic)
+    public function edit(UserType $userType)
     {
         //
     }
@@ -50,7 +58,7 @@ class MentorTopicController extends Controller
     /**
      * Update the specified resource in storage.
      */
-    public function update(Request $request, MentorTopic $mentorTopic)
+    public function update(Request $request, UserType $userType)
     {
         //
     }
@@ -58,7 +66,7 @@ class MentorTopicController extends Controller
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy(MentorTopic $mentorTopic)
+    public function destroy(UserType $userType)
     {
         //
     }

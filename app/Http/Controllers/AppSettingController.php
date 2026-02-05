@@ -2,10 +2,10 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Consultation;
+use App\Models\AppSetting;
 use Illuminate\Http\Request;
 
-class ConsultationController extends Controller
+class AppSettingController extends Controller
 {
     /**
      * Display a listing of the resource.
@@ -34,7 +34,7 @@ class ConsultationController extends Controller
     /**
      * Display the specified resource.
      */
-    public function show(Consultation $consultation)
+    public function show(AppSetting $appSetting)
     {
         //
     }
@@ -42,7 +42,7 @@ class ConsultationController extends Controller
     /**
      * Show the form for editing the specified resource.
      */
-    public function edit(Consultation $consultation)
+    public function edit(AppSetting $appSetting)
     {
         //
     }
@@ -50,7 +50,7 @@ class ConsultationController extends Controller
     /**
      * Update the specified resource in storage.
      */
-    public function update(Request $request, Consultation $consultation)
+    public function update(Request $request, AppSetting $appSetting)
     {
         //
     }
@@ -58,7 +58,7 @@ class ConsultationController extends Controller
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy(Consultation $consultation)
+    public function destroy(AppSetting $appSetting)
     {
         //
     }

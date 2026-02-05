@@ -25,7 +25,7 @@ return new class extends Migration
     
             $table->string('ktp_photo')->nullable();
     
-            $table->string('bank_name')->nullable();
+            $table->integer('bank_id')->nullable();
             $table->string('bank_account')->nullable();
             $table->string('bank_holder_name')->nullable();
     

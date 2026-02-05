@@ -16,7 +16,7 @@ class Mentor extends Model
         'experience_years',
         'description',
         'ktp_photo',
-        'bank_name',
+        'bank_id',
         'bank_account',
         'bank_holder_name',
         'is_verified',
@@ -26,6 +26,11 @@ class Mentor extends Model
         'cooldown_minutes',
 
     ];
+
+    public function bank()
+    {
+        return $this->belongsTo(Bank::class);
+    }
 
     public function user()
     {
@@ -37,5 +42,20 @@ class Mentor extends Model
         return $this->belongsTo(UserType::class);
     }
 
+    public function schedules()
+    {
+        return $this->hasMany(Schedule::class);
+    }
+
+    public function services()
+    {
+        return $this->hasMany(MentorService::class,'mentor_id');
+    }
     
+    public function topics()
+    {
+        return $this->hasMany(MentorTopic::class,'mentor_id');
+    }
+    
+
 }

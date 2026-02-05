@@ -1,15 +1,27 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Http\Controllers\Api;
 
-use App\Models\Mentor;
+use App\Http\Controllers\Controller;
+use App\Models\TopicCategory;
 use Illuminate\Http\Request;
 
-class MentorController extends Controller
+class TopicCategoryController extends Controller
 {
-    /**
-     * Display a listing of the resource.
-     */
+
+    public function topics($userTypeId)
+    {
+        $data = TopicCategory::select('id', 'name')
+            ->where('user_type_id', $userTypeId)
+            ->get();
+    
+        return response()->json([
+            'status' => true,
+            'data' => $data
+        ]);
+    }
+    
+
     public function index()
     {
         //
@@ -34,7 +46,7 @@ class MentorController extends Controller
     /**
      * Display the specified resource.
      */
-    public function show(Mentor $mentor)
+    public function show(TopicCategory $topicCategory)
     {
         //
     }
@@ -42,7 +54,7 @@ class MentorController extends Controller
     /**
      * Show the form for editing the specified resource.
      */
-    public function edit(Mentor $mentor)
+    public function edit(TopicCategory $topicCategory)
     {
         //
     }
@@ -50,7 +62,7 @@ class MentorController extends Controller
     /**
      * Update the specified resource in storage.
      */
-    public function update(Request $request, Mentor $mentor)
+    public function update(Request $request, TopicCategory $topicCategory)
     {
         //
     }
@@ -58,7 +70,7 @@ class MentorController extends Controller
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy(Mentor $mentor)
+    public function destroy(TopicCategory $topicCategory)
     {
         //
     }

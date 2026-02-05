@@ -19,9 +19,10 @@ class MentorService extends Model
         return $this->belongsTo(Mentor::class);
     }
 
-    public function service_type()
+
+    public function serviceType()
     {
-        return $this->belongsTo(ServiceType::class);
+        return $this->belongsTo(ServiceType::class, 'service_type_id');
     }
     
 }

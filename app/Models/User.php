@@ -17,7 +17,8 @@ class User extends Authenticatable
      *
      * @var list<string>
      */
-    protected $connection = 'users_db';
+    protected $connection = 'mysql_user';
+
 
     protected $fillable = [
         'uuid',

@@ -1,11 +1,13 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Http\Controllers\Api;
 
-use App\Models\UserType;
+
+use App\Http\Controllers\Controller;
+use App\Models\MentorService;
 use Illuminate\Http\Request;
 
-class UserTypeController extends Controller
+class MentorTopicController extends Controller
 {
     /**
      * Display a listing of the resource.
@@ -34,7 +36,7 @@ class UserTypeController extends Controller
     /**
      * Display the specified resource.
      */
-    public function show(UserType $userType)
+    public function show(MentorService $mentorService)
     {
         //
     }
@@ -42,7 +44,7 @@ class UserTypeController extends Controller
     /**
      * Show the form for editing the specified resource.
      */
-    public function edit(UserType $userType)
+    public function edit(MentorService $mentorService)
     {
         //
     }
@@ -50,7 +52,7 @@ class UserTypeController extends Controller
     /**
      * Update the specified resource in storage.
      */
-    public function update(Request $request, UserType $userType)
+    public function update(Request $request, MentorService $mentorService)
     {
         //
     }
@@ -58,7 +60,7 @@ class UserTypeController extends Controller
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy(UserType $userType)
+    public function destroy(MentorService $mentorService)
     {
         //
     }
