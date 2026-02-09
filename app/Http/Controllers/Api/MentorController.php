@@ -11,6 +11,7 @@ use App\Models\MentorTopic;
 use App\Models\MentorService;
 use App\Models\Wallet;
 use App\Models\Schedule;
+use App\Models\Consultation;
 
 class MentorController extends Controller
 {
@@ -75,7 +76,7 @@ class MentorController extends Controller
                 ]);
             }
 
-            // 3️⃣ INSERT SERVICES
+            // INSERT SERVICES
             foreach ($request->services as $service) {
                 MentorService::create([
                     'mentor_id' => $mentor->id,
@@ -225,4 +226,95 @@ class MentorController extends Controller
         ]);
     }
     
+    // Consultation
+    public function listConsultations(Request $request)
+    {
+        $userId = auth()->id();
+
+        // ambil mentor dari user login
+        $mentor = Mentor::where('user_id',$userId)->first();
+
+        if (!$mentor) {
+            return response()->json([
+                'success'=>false,
+                'message'=>'Mentor not found'
+            ],404);
+        }
+        $data = Consultation::with([
+                'customer:id,name,email,profile_photo_path',
+                'payment:id,consultation_id,status,paid_at'
+            ])
+            ->where('mentor_id', $mentor->id)
+            ->orderBy('id','desc')
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $data
+        ]);
+    }
+    public function detailConsultation($id)
+    {
+        $userId = auth()->id();
+
+        // ambil mentor dari user login
+        $mentor = Mentor::where('user_id',$userId)->first();
+
+        if (!$mentor) {
+            return response()->json([
+                'success'=>false,
+                'message'=>'Mentor not found'
+            ],404);
+        }
+        $consult = Consultation::with([
+            'customer:id,name,email,profile_photo_path',
+            'payment:id,consultation_id,status,paid_at',
+            'service:id,name',
+            'topic:id,name'
+        ])
+        ->where('mentor_id',$mentor->id)
+        ->findOrFail($id);
+
+        return response()->json($consult);
+    }
+
+    // Mulai konsultasi update started_at
+    public function start($id)
+    {
+        $userId = auth()->id();
+
+        // ambil mentor dari user login
+        $mentor = Mentor::where('user_id',$userId)->first();
+        $consult = Consultation::where('mentor_id', $mentor->id)
+            ->findOrFail($id);
+
+        if (!$consult->started_at) {
+            $consult->update([
+                'started_at'=>now(),
+                'status'=>'active'
+            ]);
+        }
+
+        return response()->json(['success'=>true]);
+    }
+
+    public function end($id)
+    {
+        $userId = auth()->id();
+
+        // ambil mentor dari user login
+        $mentor = Mentor::where('user_id',$userId)->first();
+        $consult = Consultation::where('mentor_id', $mentor->id)
+            ->findOrFail($id);
+
+        if (!$consult->ended_at) {
+            $consult->update([
+                'ended_at'=>now(),
+                'status'=>'completed'
+            ]);
+        }
+
+        return response()->json(['success'=>true]);
+    }
+
 }

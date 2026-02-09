@@ -3,8 +3,10 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use App\Models\User;
 
 class Consultation extends Model
+
 {
     protected $table = 'consultations';
 
@@ -14,6 +16,7 @@ class Consultation extends Model
         'mentor_id',
         'service_type_id',
         'topic_category_id',
+        'departure_date',
         'schedule_id',
         'price',
         'duration_minutes',
@@ -24,9 +27,25 @@ class Consultation extends Model
     ];
 
     public function customer()
-{
-    return $this->belongsTo(User::class, 'customer_user_id')
-                ->setConnection('mysql_user');
-}
+    {
+        return $this->belongsTo(User::class, 'customer_user_id');
+    }
+    
+
+    public function payment()
+    {
+        return $this->hasOne(Payments::class,'consultation_id');
+    }
+
+    public function service()
+    {
+        return $this->belongsTo(ServiceType::class, 'service_type_id');
+    }
+
+    public function topic()
+    {
+        return $this->belongsTo(TopicCategory::class, 'topic_category_id');
+    }
+
 
 }

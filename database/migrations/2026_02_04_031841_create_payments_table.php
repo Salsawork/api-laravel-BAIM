@@ -15,7 +15,7 @@ return new class extends Migration
             $table->bigIncrements('id');
 
             $table->unsignedBigInteger('consultation_id');
-            $table->string('payment_method')->nullable();
+            $table->unsignedInteger('payment_method_id')->nullable();
 
             $table->string('xendit_invoice_id')->nullable();
             $table->string('xendit_external_id')->nullable();

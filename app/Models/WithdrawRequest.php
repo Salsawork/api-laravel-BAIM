@@ -15,4 +15,14 @@ class WithdrawRequest extends Model
         'bank_account',
         'status',
     ];
+
+    public function wallet()
+    {
+        return $this->belongsTo(Wallet::class);
+    }
+
+    public function bank()
+    {
+        return $this->belongsTo(Bank::class);
+    }
 }
