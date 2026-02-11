@@ -24,6 +24,9 @@ class Consultation extends Model
         'payment_status',
         'started_at',
         'ended_at',
+        'agora_channel',
+        'queue_number',
+        'expired_at'
     ];
 
     public function customer()
@@ -47,5 +50,9 @@ class Consultation extends Model
         return $this->belongsTo(TopicCategory::class, 'topic_category_id');
     }
 
+    public function mentor()
+{
+    return $this->belongsTo(Mentor::class,'mentor_id');
+}
 
 }

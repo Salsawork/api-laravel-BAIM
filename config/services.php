@@ -33,11 +33,17 @@ return [
             'bot_user_oauth_token' => env('SLACK_BOT_USER_OAUTH_TOKEN'),
             'channel' => env('SLACK_BOT_USER_DEFAULT_CHANNEL'),
         ],
+        
     ],
     'xendit' => [
         'secret_key' => env('XENDIT_SECRET'),
         'callback_token' => env('XENDIT_CALLBACK_TOKEN'),
     ],
 
+
+    'agora' => [
+        'app_id' => env('AGORA_APP_ID'),
+        'app_certificate' => env('AGORA_APP_CERTIFICATE'),
+    ],
 
 ];

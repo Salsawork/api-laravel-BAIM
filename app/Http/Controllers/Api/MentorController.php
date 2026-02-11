@@ -112,36 +112,12 @@ class MentorController extends Controller
         }
     }
 
-    public function updateOnlineStatus(Request $request)
-    {
-        $request->validate([
-            'is_online' => 'required|boolean'
-        ]);
-
-        $mentor = Mentor::where('user_id', auth()->id())->first();
-
-        if (!$mentor) {
-            return response()->json([
-                'status' => false,
-                'message' => 'Mentor profile not found'
-            ], 404);
-        }
-
-        $mentor->update([
-            'is_online' => $request->is_online
-        ]);
-
-        return response()->json([
-            'status' => true,
-            'message' => 'Mentor status updated',
-            'is_online' => $mentor->is_online
-        ]);
-    }
     public function listMentors(Request $request)
     {
         $query = Mentor::query()
-            ->where('is_verified', 1)
-            ->where('is_online', 1);
+        ->where('is_verified', 1)
+        ->where('is_online', 1)
+        ->whereNull('current_consultation_id');
     
         if ($request->filled('search')) {
             $search = strtolower($request->search);
@@ -225,34 +201,98 @@ class MentorController extends Controller
             ]
         ]);
     }
-    
-    // Consultation
-    public function listConsultations(Request $request)
+
+    // Untuk Toggle
+    public function goOnline()
+    {
+        $mentor = Mentor::where('user_id', auth()->id())->firstOrFail();
+
+        $mentor->update([
+            'is_online'=>1,
+            'last_seen'=>now()
+        ]);
+
+        return response()->json(['success'=>true]);
+    }
+
+    // set di UI masih aktif atau off
+    public function mentorPresence()
+    {
+        $mentor = Mentor::where('user_id', auth()->id())->first();
+
+        if (!$mentor) {
+            return response()->json(['message'=>'mentor not found'],404);
+        }
+
+        $mentor->update([
+            'is_online'=>1,
+            'last_seen'=>now()
+        ]);
+
+        return response()->json(['ok'=>true]);
+    }
+
+    // Consultation filter berdasarkan status
+    public function mentorConsultations(Request $request)
     {
         $userId = auth()->id();
-
-        // ambil mentor dari user login
+    
         $mentor = Mentor::where('user_id',$userId)->first();
-
+    
         if (!$mentor) {
             return response()->json([
                 'success'=>false,
                 'message'=>'Mentor not found'
             ],404);
         }
-        $data = Consultation::with([
+    
+        $query = Consultation::with([
                 'customer:id,name,email,profile_photo_path',
                 'payment:id,consultation_id,status,paid_at'
             ])
-            ->where('mentor_id', $mentor->id)
-            ->orderBy('id','desc')
+            ->where('mentor_id', $mentor->id);
+    
+        // FILTER BY STATUS (opsional dari frontend)
+        if($request->status){
+    
+            if($request->status == 'active'){
+                $query->where('status','active');
+            }
+    
+            elseif($request->status == 'completed'){
+                $query->where('status','completed');
+            }
+    
+            elseif($request->status == 'waiting'){
+                $query->where('payment_status','waiting');
+            }
+    
+            elseif($request->status == 'paid'){
+                $query->where('payment_status','paid');
+            }
+        }
+    
+        // default urutan
+        $data = $query
+            ->orderByRaw("
+                CASE 
+                    WHEN status='active' THEN 1
+                    WHEN payment_status='paid' AND status!='completed' THEN 2
+                    WHEN status='pending' THEN 3
+                    WHEN status='completed' THEN 4
+                    ELSE 5
+                END
+            ")
+            ->orderByDesc('id')
             ->get();
-
+    
         return response()->json([
             'success' => true,
+            'total' => $data->count(),
             'data' => $data
         ]);
     }
+    
     public function detailConsultation($id)
     {
         $userId = auth()->id();
@@ -276,45 +316,6 @@ class MentorController extends Controller
         ->findOrFail($id);
 
         return response()->json($consult);
-    }
-
-    // Mulai konsultasi update started_at
-    public function start($id)
-    {
-        $userId = auth()->id();
-
-        // ambil mentor dari user login
-        $mentor = Mentor::where('user_id',$userId)->first();
-        $consult = Consultation::where('mentor_id', $mentor->id)
-            ->findOrFail($id);
-
-        if (!$consult->started_at) {
-            $consult->update([
-                'started_at'=>now(),
-                'status'=>'active'
-            ]);
-        }
-
-        return response()->json(['success'=>true]);
-    }
-
-    public function end($id)
-    {
-        $userId = auth()->id();
-
-        // ambil mentor dari user login
-        $mentor = Mentor::where('user_id',$userId)->first();
-        $consult = Consultation::where('mentor_id', $mentor->id)
-            ->findOrFail($id);
-
-        if (!$consult->ended_at) {
-            $consult->update([
-                'ended_at'=>now(),
-                'status'=>'completed'
-            ]);
-        }
-
-        return response()->json(['success'=>true]);
     }
 
 }

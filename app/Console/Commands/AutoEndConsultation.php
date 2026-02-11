@@ -45,6 +45,13 @@ class AutoEndConsultation extends Command
                     'ended_at'=>now()
                 ]);
     
+                // ================= FREE MENTOR SLOT
+                \Mentor::where('id',$consult->mentor_id)
+                ->lockForUpdate()
+                ->update([
+                    'current_consultation_id'=>null
+                ]);
+
                 // ================= HITUNG KOMISI
                 $appFee = Fee::where('key_name','app_fee')->value('value') ?? 0;
                 $mentorAmount = max($consult->price - $appFee, 0);

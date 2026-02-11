@@ -16,9 +16,7 @@ class Payments extends Model
         'platform_fee',
         'total',
         'status',
-        'paid_at',
-        'verified_by',
-        'proof_image'
+        'paid_at'
     ];
 
     public function consultation()

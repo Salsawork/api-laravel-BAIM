@@ -17,16 +17,19 @@ use App\Http\Controllers\Api\PaymentController;
 Route::middleware(['auth:api'])->group(function () {
 
     Route::post('/mentors/regis', [MentorController::class, 'registerMentor']);
-    Route::post('/mentors/online', [MentorController::class, 'updateOnlineStatus']);
     Route::post('/mentors/detail/{id}', [MentorController::class, 'detail']);
     Route::post('/mentors/list', [MentorController::class, 'listMentors']);
-    Route::post('/mentors/consul', [MentorController::class, 'listConsultations']);
+    Route::post('/mentors/online', [MentorController::class, 'goOnline']);
+    Route::post('/mentors/presence', [MentorController::class, 'mentorPresence']);
+    
+    Route::post('/mentors/consul', [MentorController::class, 'mentorConsultations']);
     Route::post('/mentors/consul/detail/{id}', [MentorController::class, 'detailConsultation']);
-    Route::post('/mentors/consul/start/{id}', [MentorController::class, 'start']);
-    Route::post('/mentors/consul/end/{id}', [MentorController::class, 'end']);
-
 
     Route::post('/consultations/booking', [ConsultationController::class, 'booking']);
+    // join room setelah paid
+   Route::post('/join-room/{orderNumber}', [ConsultationController::class,'joinRoom']);
+   Route::post('/join-chat/{orderNumber}', [ConsultationController::class,'joinChat']);
+   Route::post('/end-session/{orderNumber}', [ConsultationController::class,'endSession']);
 
      // create invoice xendit
     Route::post('/payment/xendit/{consultationId}', [PaymentController::class,'paymentXendit']);
@@ -38,8 +41,6 @@ Route::middleware(['auth:api'])->group(function () {
 
      // cek status order 
      Route::get('/payment/status/{orderNumber}', [PaymentController::class,'checkStatus']);
-     // join room setelah paid
-    Route::post('/payment/join-room/{orderNumber}', [PaymentController::class,'joinRoom']);
 
     // Get data
     Route::get('/user_types', [UserTypeController::class, 'userTypes']);

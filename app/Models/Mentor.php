@@ -24,7 +24,8 @@ class Mentor extends Model
         'rating_avg',
         'total_sessions',
         'cooldown_minutes',
-
+        'current_consultation_id',
+        'last_seen'
     ];
 
     public function bank()
@@ -56,6 +57,8 @@ class Mentor extends Model
     {
         return $this->hasMany(MentorTopic::class,'mentor_id');
     }
+
+    // current_consultation_id
     
 
 }
