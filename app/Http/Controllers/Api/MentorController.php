@@ -202,34 +202,86 @@ class MentorController extends Controller
         ]);
     }
 
-    // Untuk Toggle
-    public function goOnline()
+    // Untuk Toggle on/off
+    public function toggleOnline(Request $request)
     {
-        $mentor = Mentor::where('user_id', auth()->id())->firstOrFail();
-
-        $mentor->update([
-            'is_online'=>1,
-            'last_seen'=>now()
+        $request->validate([
+            'is_online' => 'required|boolean'
         ]);
-
-        return response()->json(['success'=>true]);
+    
+        $mentor = Mentor::where('user_id', auth()->id())->first();
+    
+        // BUKAN MENTOR
+        if(!$mentor){
+            return response()->json([
+                'success'=>false,
+                'message'=>'Akun ini bukan ustad/mentor'
+            ],403);
+        }
+    
+        // BELUM VERIFIED ADMIN
+        if(!$mentor->is_verified){
+            return response()->json([
+                'success'=>false,
+                'message'=>'Akun ustad belum diverifikasi admin'
+            ],403);
+        }
+    
+        // UPDATE STATUS
+        $mentor->update([
+            'is_online' => $request->is_online,
+            'last_seen' => $request->is_online ? now() : $mentor->last_seen
+        ]);
+    
+        return response()->json([
+            'success'=>true,
+            'is_online'=>$mentor->is_online,
+            'message'=>$mentor->is_online ? 'Ustad online' : 'Ustad offline'
+        ]);
     }
-
+    
     // set di UI masih aktif atau off
     public function mentorPresence()
     {
         $mentor = Mentor::where('user_id', auth()->id())->first();
 
-        if (!$mentor) {
-            return response()->json(['message'=>'mentor not found'],404);
+        if(!$mentor){
+            return response()->json([
+                'success'=>false,
+                'message'=>'Akun ini bukan ustad'
+            ],403);
         }
 
+        // ❌ toggle off manual
+        if(!$mentor->is_online){
+            return response()->json([
+                'success'=>false,
+                'message'=>'Ustad sedang offline'
+            ],403);
+        }
+
+        // ❌ auto offline karena last_seen lama
+        if($mentor->last_seen && $mentor->last_seen < now()->subSeconds(60)){
+            
+            $mentor->update([
+                'is_online'=>0
+            ]);
+
+            return response()->json([
+                'success'=>false,
+                'message'=>'Session expired, ustad dianggap offline'
+            ],403);
+        }
+
+        // update heartbeat
         $mentor->update([
-            'is_online'=>1,
             'last_seen'=>now()
         ]);
 
-        return response()->json(['ok'=>true]);
+        return response()->json([
+            'success'=>true,
+            'message'=>'presence updated'
+        ]);
     }
 
     // Consultation filter berdasarkan status
@@ -296,26 +348,46 @@ class MentorController extends Controller
     public function detailConsultation($id)
     {
         $userId = auth()->id();
-
-        // ambil mentor dari user login
+    
+        // cek mentor login
         $mentor = Mentor::where('user_id',$userId)->first();
-
-        if (!$mentor) {
+    
+        if(!$mentor){
             return response()->json([
                 'success'=>false,
-                'message'=>'Mentor not found'
-            ],404);
+                'message'=>'Akun ini bukan mentor'
+            ],403);
         }
+    
+        // ambil consultation
         $consult = Consultation::with([
             'customer:id,name,email,profile_photo_path',
             'payment:id,consultation_id,status,paid_at',
             'service:id,name',
             'topic:id,name'
-        ])
-        ->where('mentor_id',$mentor->id)
-        ->findOrFail($id);
-
-        return response()->json($consult);
+        ])->find($id);
+    
+        // kalau id tidak ada
+        if(!$consult){
+            return response()->json([
+                'success'=>false,
+                'message'=>'Consultation tidak ditemukan'
+            ],404);
+        }
+    
+        // kalau bukan milik mentor ini
+        if($consult->mentor_id != $mentor->id){
+            return response()->json([
+                'success'=>false,
+                'message'=>'Anda tidak memiliki akses ke consultation ini'
+            ],403);
+        }
+    
+        return response()->json([
+            'success'=>true,
+            'data'=>$consult
+        ]);
     }
+    
 
 }

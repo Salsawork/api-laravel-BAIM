@@ -19,7 +19,7 @@ Route::middleware(['auth:api'])->group(function () {
     Route::post('/mentors/regis', [MentorController::class, 'registerMentor']);
     Route::post('/mentors/detail/{id}', [MentorController::class, 'detail']);
     Route::post('/mentors/list', [MentorController::class, 'listMentors']);
-    Route::post('/mentors/online', [MentorController::class, 'goOnline']);
+    Route::post('/toggle/online', [MentorController::class, 'toggleOnline']);
     Route::post('/mentors/presence', [MentorController::class, 'mentorPresence']);
     
     Route::post('/mentors/consul', [MentorController::class, 'mentorConsultations']);
@@ -38,8 +38,6 @@ Route::middleware(['auth:api'])->group(function () {
     // create manual payment
     Route::post('/payment/manual/{consultationId}', [PaymentController::class,'paymentManual']);
     Route::post('/payment/verify/{paymentId}', [PaymentController::class,'verifyManual']);
-
-     // cek status order 
      Route::get('/payment/status/{orderNumber}', [PaymentController::class,'checkStatus']);
 
     // Get data
