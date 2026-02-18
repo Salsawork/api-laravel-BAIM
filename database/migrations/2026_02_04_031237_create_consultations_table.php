@@ -28,7 +28,7 @@ return new class extends Migration
             $table->unsignedInteger('duration_minutes');
         
             $table->enum('status',['pending','active','completed','cancelled','expired'])->default('pending');
-            $table->enum('payment_status',['waiting','paid','failed','refund'])->default('waiting');
+            $table->enum('payment_status',['waiting','paid','failed','refund', 'free'])->default('waiting');
         
             $table->dateTime('started_at')->nullable();
             $table->dateTime('ended_at')->nullable();

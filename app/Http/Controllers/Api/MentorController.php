@@ -24,46 +24,77 @@ class MentorController extends Controller
             'experience_years' => 'required|integer|min:0',
             'description' => 'required|string',
             'ktp_photo' => 'required|image|mimes:jpg,jpeg,png|max:2048',
-
+    
             'bank_id' => 'required|exists:mst_bank,id_bank',
             'bank_account' => 'required|string|max:50',
             'bank_holder_name' => 'required|string|max:150',
-
+    
             'topics' => 'required|array|min:1',
             'topics.*' => 'exists:topic_categories,id',
-
+    
             'services' => 'required|array|min:1',
             'services.*.service_type_id' => 'required|exists:service_types,id',
-            'services.*.price' => 'required|numeric|min:1000',
-            'services.*.duration_minutes' => 'required|integer|min:30',
-            
+            'services.*.duration_minutes' => 'required|integer|min:30'
         ]);
-
+    
         $user = auth()->user();
-
-        // CEK SUDAH JADI MENTOR ATAU BELUM
+    
+        // CEK SUDAH JADI MENTOR
         $exists = Mentor::where('user_id', $user->id)->first();
-
         if ($exists) {
             return response()->json([
                 'status' => false,
                 'message' => 'User already registered as mentor'
             ], 409);
         }
-
+    
+        // VALIDASI KHUSUS USER TYPE
+        // jika MUTHOWIF → hanya chat service
+        if($request->user_type_id == 1){
+            foreach($request->services as $srv){
+                if($srv['service_type_id'] != 1){
+                    return response()->json([
+                        'status'=>false,
+                        'message'=>'Muthowif hanya boleh layanan chat'
+                    ],422);
+                }
+            }
+        }
+    
+        // jika KONSULTAN price wajib diisi
+        if($request->user_type_id == 2){
+            foreach($request->services as $srv){
+    
+                if(!isset($srv['price'])){
+                    return response()->json([
+                        'status'=>false,
+                        'message'=>'Harga wajib diisi untuk konsultan'
+                    ],422);
+                }
+    
+                if($srv['price'] < 1000){
+                    return response()->json([
+                        'status'=>false,
+                        'message'=>'Harga minimal 1000'
+                    ],422);
+                }
+            }
+        }
+    
         DB::beginTransaction();
-
+    
         try {
-
+    
+            // UPLOAD KTP
             $ktpPath = null;
-
+    
             if($request->hasFile('ktp_photo')){
                 $file = $request->file('ktp_photo');
                 $filename = 'ktp_'.$user->id.'_'.time().'.'.$file->getClientOriginalExtension();
                 $file->move(public_path('uploads/ktp'), $filename);
                 $ktpPath = 'uploads/ktp/'.$filename;
             }
-
+    
             // CREATE MENTOR
             $mentor = Mentor::create([
                 'user_id' => $user->id,
@@ -72,14 +103,16 @@ class MentorController extends Controller
                 'age' => $request->age,
                 'experience_years' => $request->experience_years,
                 'description' => $request->description,
+                'ktp_photo' => $ktpPath,
                 'bank_id' => $request->bank_id,
                 'bank_account' => $request->bank_account,
                 'bank_holder_name' => $request->bank_holder_name,
-                'ktp_photo' => $ktpPath,
                 'is_verified' => 0,
-                'is_online' => 0
+                'is_online' => 0,
+                'rating_avg' => 0,
+                'total_sessions' => 0
             ]);
-
+    
             // INSERT TOPICS
             foreach ($request->topics as $topicId) {
                 MentorTopic::create([
@@ -87,35 +120,47 @@ class MentorController extends Controller
                     'topic_category_id' => $topicId
                 ]);
             }
-
-            // INSERT SERVICES
+    
             foreach ($request->services as $service) {
+    
+                // prevent duplicate service
+                $existsService = MentorService::where('mentor_id',$mentor->id)
+                    ->where('service_type_id',$service['service_type_id'])
+                    ->exists();
+    
+                if($existsService){
+                    continue;
+                }
+    
                 MentorService::create([
                     'mentor_id' => $mentor->id,
                     'service_type_id' => $service['service_type_id'],
-                    'price' => $service['price'],
+                    'price' => $service['price'] ?? 0, // muthowif boleh 0
                     'duration_minutes' => $service['duration_minutes']
                 ]);
             }
-
-            // CREATE WALLET
+    
             Wallet::create([
                 'mentor_id' => $mentor->id,
                 'balance' => 0
             ]);
-
+    
             DB::commit();
-
+    
             return response()->json([
                 'status' => true,
                 'message' => 'Mentor registration successful',
-                'mentor_id' => $mentor->id
+                'data' => [
+                    'mentor_id' => $mentor->id,
+                    'user_type_id' => $mentor->user_type_id,
+                    'is_verified' => 0
+                ]
             ]);
-
+    
         } catch (\Exception $e) {
-
+    
             DB::rollBack();
-
+    
             return response()->json([
                 'status' => false,
                 'message' => 'Failed to register mentor',
@@ -123,7 +168,7 @@ class MentorController extends Controller
             ], 500);
         }
     }
-
+    
     public function listMentors(Request $request)
     {
         $query = Mentor::query()

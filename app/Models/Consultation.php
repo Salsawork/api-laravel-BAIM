@@ -20,6 +20,11 @@ class Consultation extends Model
         'schedule_id',
         'price',
         'duration_minutes',
+
+        'people_count',
+        'package_price',
+        'total_price',
+
         'status',
         'payment_status',
         'started_at',

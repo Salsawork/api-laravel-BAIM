@@ -17,7 +17,7 @@ return new class extends Migration
             $table->unsignedInteger('mentor_id');
             $table->unsignedTinyInteger('service_type_id');
 
-            $table->decimal('price',12,2);
+            $table->decimal('price',12,2)->nullable();
             $table->unsignedInteger('duration_minutes');
 
             $table->timestamps();

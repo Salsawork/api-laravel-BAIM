@@ -30,6 +30,7 @@ Route::middleware(['auth:api'])->group(function () {
     // join room setelah paid
     Route::post('/join-room/{orderNumber}', [ConsultationController::class,'joinRoom']);
     Route::post('/join-chat/{orderNumber}', [ConsultationController::class,'joinChat']);
+    
     Route::post('/end-session/{orderNumber}', [ConsultationController::class,'endSession']);
     // customer
     Route::get('/consultations/history/customer',[ConsultationController::class,'historyCustomer']);

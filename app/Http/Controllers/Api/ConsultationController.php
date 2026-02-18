@@ -19,9 +19,13 @@ class ConsultationController extends Controller
     {
         $request->validate([
             'mentor_id' => 'required|exists:mentors,id',
-            'service_type_id' => 'required|exists:service_types,id',
+            'service_type_id' => 'nullable|exists:service_types,id',
             'topic_category_id' => 'required|exists:topic_categories,id',
-            'departure_date' => 'nullable|date'
+    
+            // khusus muthowif
+            'departure_date' => 'nullable|date',
+            'people_count' => 'nullable|integer|min:1',
+            'package_price' => 'nullable|numeric|min:0'
         ]);
     
         $user = auth()->user();
@@ -30,111 +34,125 @@ class ConsultationController extends Controller
     
         try {
     
-            $mentor = Mentor::where('id', $request->mentor_id)
-                ->lockForUpdate()
-                ->first();
+            $mentor = Mentor::lockForUpdate()->find($request->mentor_id);
     
-            if (!$mentor) {
-                return response()->json([
-                    'status'=>false,
-                    'message'=>'Mentor not found'
-                ],404);
+            if(!$mentor){
+                return response()->json(['status'=>false,'message'=>'Mentor not found'],404);
             }
     
-            // =============================
-            // VALIDASI USER TYPE
-            // =============================
-            if ($mentor->user_type_id == 1) { // MUTHOWIF
-                if (!$request->departure_date) {
+            if(!$mentor->is_online){
+                return response()->json(['status'=>false,'message'=>'Mentor offline'],409);
+            }
+    
+            // cek mentor busy
+            if(!is_null($mentor->current_consultation_id)){
+                return response()->json([
+                    'status'=>false,
+                    'message'=>'Mentor sedang melayani user lain'
+                ],409);
+            }            
+    
+            $orderNumber = 'BAIM-'.time().rand(100,999);
+    
+            // =========================================
+            // CASE 1 : MUTHOWIF (FREE CHAT)
+            // =========================================
+            if($mentor->user_type_id == 1){
+    
+                if(!$request->departure_date || !$request->people_count || !$request->package_price){
                     return response()->json([
                         'status'=>false,
-                        'message'=>'Departure date required for muthowif'
+                        'message'=>'Isi tanggal, jumlah orang, dan harga paket'
                     ],422);
                 }
-            } else {
-                // konsultan tidak boleh isi
-                $request->merge(['departure_date'=>null]);
-            }
     
-            // MENTOR ONLINE CHECK
-            if (!$mentor->is_online) {
+                $consult = Consultation::create([
+                    'order_number'=>$orderNumber,
+                    'customer_user_id'=>$user->id,
+                    'mentor_id'=>$mentor->id,
+                    'service_type_id'=>1, // chat only
+                    'topic_category_id'=>$request->topic_category_id,
+                    'departure_date'=>$request->departure_date,
+    
+                    'people_count'=>$request->people_count,
+                    'package_price'=>$request->package_price,
+                    'total_price'=>$request->package_price * $request->people_count,
+                    'price'=>0,
+    
+                    'duration_minutes'=>60,
+                    'payment_status'=>'free',
+                    'status'=>'active',
+                    'started_at'=>now(),
+                    'ended_at'=>now()->addMinutes(60)
+                ]);
+    
+                // lock mentor
+                $mentor->update([
+                    'current_consultation_id'=>$consult->id
+                ]);
+    
+                DB::commit();
+    
                 return response()->json([
-                    'status'=>false,
-                    'message'=>'Mentor offline'
-                ],409);
+                    'status'=>true,
+                    'message'=>'Chat muthowif dimulai (gratis)',
+                    'data'=>[
+                        'order_number'=>$consult->order_number,
+                        'consultation_id'=>$consult->id
+                    ]
+                ]);
             }
     
-            // MENTOR BUSY CHECK
-            // $busy = Consultation::where('mentor_id',$mentor->id)
-            //     ->whereIn('status',['pending','active'])
-            //     ->exists();
-            $check = Consultation::where('mentor_id',$mentor->id)
-            ->whereNotNull('started_at')
-            ->whereRaw('DATE_ADD(started_at, INTERVAL duration_minutes MINUTE) > NOW()')
-            ->exists();
-            
-            if ($check) {
-                return response()->json([
-                    'status'=>false,
-                    'message'=>'Mentor is still in the consultation session.'
-                ],409);
-            }
-    
-            // SERVICE
+            // =========================================
+            // CASE 2 : KONSULTAN BAYAR
+            // =========================================
             $service = MentorService::where('mentor_id',$mentor->id)
                 ->where('service_type_id',$request->service_type_id)
                 ->first();
     
-            if (!$service) {
+            if(!$service){
                 return response()->json([
                     'status'=>false,
-                    'message'=>'Service not available'
+                    'message'=>'Service tidak tersedia'
                 ],404);
             }
     
-            // CREATE CONSULTATION 
-            $orderNumber = 'BAIM-'.time().rand(100,999);
+            $consult = Consultation::create([
+                'order_number'=>$orderNumber,
+                'customer_user_id'=>$user->id,
+                'mentor_id'=>$mentor->id,
+                'service_type_id'=>$request->service_type_id,
+                'topic_category_id'=>$request->topic_category_id,
     
-            $duration = $service->duration_minutes ?? 60;
+                'price'=>$service->price,
+                'duration_minutes'=>$service->duration_minutes ?? 60,
     
-            $consultation = Consultation::create([
-                'order_number' => $orderNumber,
-                'customer_user_id' => $user->id,
-                'mentor_id' => $mentor->id,
-                'service_type_id' => $request->service_type_id,
-                'topic_category_id' => $request->topic_category_id,
-                'departure_date' => $request->departure_date,
-                'price' => $service->price,
-                'duration_minutes' => $duration,
-                'status' => 'pending',
-                'payment_status' => 'waiting',
+                'status'=>'pending',
+                'payment_status'=>'waiting',
                 'expired_at'=>now()->addMinutes(10)
-
             ]);
     
             DB::commit();
     
             return response()->json([
                 'status'=>true,
-                'message'=>'Booking created, waiting payment',
+                'message'=>'Booking berhasil, lanjut pembayaran',
                 'data'=>[
-                    'consultation_id'=>$consultation->id,
-                    'order_number'=>$consultation->order_number,
-                    'price'=>$consultation->price
+                    'consultation_id'=>$consult->id,
+                    'order_number'=>$consult->order_number,
+                    'price'=>$consult->price
                 ]
             ]);
     
-        } catch (\Exception $e) {
-    
+        } catch (\Exception $e){
             DB::rollBack();
-    
             return response()->json([
                 'status'=>false,
-                'message'=>'Booking failed',
-                'error'=>$e->getMessage()
+                'message'=>$e->getMessage()
             ],500);
         }
     }
+    
     public function joinRoom($orderNumber)
     {
         DB::beginTransaction();

@@ -8,6 +8,7 @@ use App\Models\Consultation;
 use App\Models\Wallet;
 use App\Models\WalletTransaction;
 use App\Models\Fee;
+use App\Models\Mentor;
 use Illuminate\Support\Facades\DB;
 
 class AutoEndConsultation extends Command
@@ -19,10 +20,9 @@ class AutoEndConsultation extends Command
     {
         $now = now();
     
-        // ambil yang benar2 harus di end
         $consultations = Consultation::where('status','active')
-            ->whereNotNull('started_at')
-            ->whereRaw('DATE_ADD(started_at, INTERVAL duration_minutes MINUTE) <= ?', [$now])
+            ->whereNotNull('ended_at')
+            ->where('ended_at','<=',$now)
             ->get();
     
         foreach ($consultations as $consult) {
@@ -31,7 +31,6 @@ class AutoEndConsultation extends Command
     
             try {
     
-                // lock row consultation
                 $consult = Consultation::lockForUpdate()->find($consult->id);
     
                 if ($consult->status != 'active') {
@@ -39,24 +38,30 @@ class AutoEndConsultation extends Command
                     continue;
                 }
     
-                // ================= END CONSULT
+                // END CONSULT
                 $consult->update([
-                    'status'=>'completed',
-                    'ended_at'=>now()
+                    'status'=>'completed'
                 ]);
     
-                // ================= FREE MENTOR SLOT
-                \Mentor::where('id',$consult->mentor_id)
-                ->lockForUpdate()
-                ->update([
-                    'current_consultation_id'=>null
-                ]);
-
-                // ================= HITUNG KOMISI
+                // FREE MENTOR SLOT
+                Mentor::where('id',$consult->mentor_id)
+                    ->lockForUpdate()
+                    ->update([
+                        'current_consultation_id'=>null
+                    ]);
+    
+                // =====================
+                // SKIP WALLET JIKA FREE
+                // =====================
+                if($consult->payment_status == 'free'){
+                    DB::commit();
+                    continue;
+                }
+    
+                // KOMISI
                 $appFee = Fee::where('key_name','app_fee')->value('value') ?? 0;
                 $mentorAmount = max($consult->price - $appFee, 0);
     
-                // ================= WALLET MENTOR
                 $wallet = Wallet::where('mentor_id',$consult->mentor_id)
                     ->lockForUpdate()
                     ->first();
@@ -76,7 +81,7 @@ class AutoEndConsultation extends Command
     
                 DB::commit();
     
-                $this->info("Consultation {$consult->id} completed");
+                $this->info("Consultation {$consult->id} auto completed");
     
             } catch (\Throwable $e) {
                 DB::rollBack();
@@ -86,5 +91,6 @@ class AutoEndConsultation extends Command
     
         return Command::SUCCESS;
     }
+    
     
 }

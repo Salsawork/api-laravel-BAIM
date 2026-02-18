@@ -15,32 +15,48 @@ class AutoCancelConsultation extends Command
     public function handle()
     {
         $now = now();
-
+    
         $consultations = Consultation::where('payment_status','waiting')
             ->where('expired_at','<',$now)
-            ->lockForUpdate()
             ->get();
-
+    
         foreach($consultations as $consult){
-
-            DB::transaction(function() use ($consult){
-
-                // update consultation
+    
+            DB::beginTransaction();
+    
+            try{
+    
+                $consult = Consultation::lockForUpdate()->find($consult->id);
+    
+                if($consult->payment_status != 'waiting'){
+                    DB::rollBack();
+                    continue;
+                }
+    
+                // cancel consultation
                 $consult->update([
                     'status'=>'cancelled',
                     'payment_status'=>'failed'
                 ]);
-
-                // update mentor
+    
+                // free mentor slot
                 Mentor::where('current_consultation_id',$consult->id)
+                    ->lockForUpdate()
                     ->update([
                         'current_consultation_id'=>null
                     ]);
-            });
-
-            $this->info("Cancelled consultation ID ".$consult->id);
+    
+                DB::commit();
+    
+                $this->info("Cancelled consultation ID ".$consult->id);
+    
+            } catch(\Exception $e){
+                DB::rollBack();
+                $this->error($e->getMessage());
+            }
         }
-
-        return 0;
+    
+        return Command::SUCCESS;
     }
+    
 }
