@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\TopicCategoryController;
 use App\Http\Controllers\Api\ServiceTypeController;
 // use App\Http\Controllers\Api\ScheduleController;
 use App\Http\Controllers\Api\PaymentController;
+use App\Http\Controllers\Api\BankController;
 
 // Route::get('/user', function (Request $request) {
 //     return $request->user();
@@ -40,14 +41,16 @@ Route::middleware(['auth:api'])->group(function () {
     Route::post('/payment/verify/{paymentId}', [PaymentController::class,'verifyManual']);
      Route::get('/payment/status/{orderNumber}', [PaymentController::class,'checkStatus']);
 
-    // Get data
-    Route::get('/user_types', [UserTypeController::class, 'userTypes']);
-    Route::get('/topics/{id}', [TopicCategoryController::class, 'topics']);
-    Route::get('/services', [ServiceTypeController::class, 'services']);
-
+   
     // Route::post('/mentors/schedule', [ScheduleController::class, 'createSchedule']);
     Route::post('/consultations/pay', [ConsultationController::class, 'testPayment']);
 });
+ // Get data
+ Route::get('/user_types', [UserTypeController::class, 'userTypes']);
+ Route::get('/banks', [BankController::class, 'banks']);
+ Route::get('/topics/{id}', [TopicCategoryController::class, 'topics']);
+ Route::get('/services', [ServiceTypeController::class, 'services']);
+
 
 // Route::post('/xendit/callback', [PaymentController::class,'callback']);
 
