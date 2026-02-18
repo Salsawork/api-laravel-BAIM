@@ -313,6 +313,77 @@ class ConsultationController extends Controller
         }
     }
 
+    // History consultation dari sisi customer
+    public function historyCustomer(Request $request)
+    {
+        $userId = auth()->id();
+
+        $query = Consultation::with([
+            'mentor:id,user_id,full_name',
+            'mentor.user:id,profile_photo_path',
+            'service:id,name',
+            'payment:id,consultation_id,status,paid_at,total'
+        ])
+        ->where('customer_user_id',$userId);
+
+        // filter status opsional
+        if($request->status){
+            $query->where('status',$request->status);
+        }
+
+        // urutan
+        $data = $query
+            ->orderByDesc('id')
+            ->paginate(10);
+
+        return response()->json([
+            'success'=>true,
+            'total'=>$data->total(),
+            'data'=>$data->items(),
+            'current_page'=>$data->currentPage(),
+            'last_page'=>$data->lastPage()
+        ]);
+    }
+
+    // History consultation dari sisi mentor
+    public function historyMentor(Request $request)
+    {
+        $userId = auth()->id();
+
+        $mentor = Mentor::where('user_id',$userId)->first();
+
+        if(!$mentor){
+            return response()->json([
+                'success'=>false,
+                'message'=>'Mentor not found'
+            ],404);
+        }
+
+        $query = Consultation::with([
+            'customer:id,name,email,profile_photo_path',
+            'service:id,name',
+            'payment:id,consultation_id,status,paid_at,total'
+        ])
+        ->where('mentor_id',$mentor->id);
+
+        // filter status
+        if($request->status){
+            $query->where('status',$request->status);
+        }
+
+        $data = $query
+            ->orderByDesc('id')
+            ->paginate(10);
+
+        return response()->json([
+            'success'=>true,
+            'total'=>$data->total(),
+            'data'=>$data->items(),
+            'current_page'=>$data->currentPage(),
+            'last_page'=>$data->lastPage()
+        ]);
+    }
+
     // public function testPayment(Request $request)
     // {
     //     $request->validate([

@@ -23,6 +23,7 @@ class MentorController extends Controller
             'age' => 'required|integer|min:18',
             'experience_years' => 'required|integer|min:0',
             'description' => 'required|string',
+            'ktp_photo' => 'required|image|mimes:jpg,jpeg,png|max:2048',
 
             'bank_id' => 'required|exists:mst_bank,id_bank',
             'bank_account' => 'required|string|max:50',
@@ -34,7 +35,8 @@ class MentorController extends Controller
             'services' => 'required|array|min:1',
             'services.*.service_type_id' => 'required|exists:service_types,id',
             'services.*.price' => 'required|numeric|min:1000',
-            'services.*.duration_minutes' => 'required|integer|min:30'
+            'services.*.duration_minutes' => 'required|integer|min:30',
+            
         ]);
 
         $user = auth()->user();
@@ -53,6 +55,15 @@ class MentorController extends Controller
 
         try {
 
+            $ktpPath = null;
+
+            if($request->hasFile('ktp_photo')){
+                $file = $request->file('ktp_photo');
+                $filename = 'ktp_'.$user->id.'_'.time().'.'.$file->getClientOriginalExtension();
+                $file->move(public_path('uploads/ktp'), $filename);
+                $ktpPath = 'uploads/ktp/'.$filename;
+            }
+
             // CREATE MENTOR
             $mentor = Mentor::create([
                 'user_id' => $user->id,
@@ -64,6 +75,7 @@ class MentorController extends Controller
                 'bank_id' => $request->bank_id,
                 'bank_account' => $request->bank_account,
                 'bank_holder_name' => $request->bank_holder_name,
+                'ktp_photo' => $ktpPath,
                 'is_verified' => 0,
                 'is_online' => 0
             ]);

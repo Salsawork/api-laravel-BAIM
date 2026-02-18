@@ -28,10 +28,13 @@ Route::middleware(['auth:api'])->group(function () {
 
     Route::post('/consultations/booking', [ConsultationController::class, 'booking']);
     // join room setelah paid
-   Route::post('/join-room/{orderNumber}', [ConsultationController::class,'joinRoom']);
-   Route::post('/join-chat/{orderNumber}', [ConsultationController::class,'joinChat']);
-   Route::post('/end-session/{orderNumber}', [ConsultationController::class,'endSession']);
-
+    Route::post('/join-room/{orderNumber}', [ConsultationController::class,'joinRoom']);
+    Route::post('/join-chat/{orderNumber}', [ConsultationController::class,'joinChat']);
+    Route::post('/end-session/{orderNumber}', [ConsultationController::class,'endSession']);
+    // customer
+    Route::get('/consultations/history/customer',[ConsultationController::class,'historyCustomer']);
+    // mentor
+    Route::get('/consultations/history/mentor',[ConsultationController::class,'historyMentor']);
      // create invoice xendit
     Route::post('/payment/xendit/{consultationId}', [PaymentController::class,'paymentXendit']);
     Route::post('/xendit/handle', [PaymentController::class,'handle']);
