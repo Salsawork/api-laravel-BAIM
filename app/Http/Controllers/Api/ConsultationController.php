@@ -44,6 +44,17 @@ class ConsultationController extends Controller
                 return response()->json(['status'=>false,'message'=>'Mentor offline'],409);
             }
     
+            $existingPending = Consultation::where('mentor_id',$mentor->id)
+                ->whereIn('status',['pending','active'])
+                ->exists();
+
+            if($existingPending){
+            return response()->json([
+                'status'=>false,
+                'message'=>'Mentor sedang ada booking aktif'
+            ],409);
+            }
+
             // cek mentor busy
             if(!is_null($mentor->current_consultation_id)){
                 return response()->json([
@@ -54,9 +65,7 @@ class ConsultationController extends Controller
     
             $orderNumber = 'BAIM-'.time().rand(100,999);
     
-            // =========================================
             // CASE 1 : MUTHOWIF (FREE CHAT)
-            // =========================================
             if($mentor->user_type_id == 1){
     
                 if(!$request->departure_date || !$request->people_count || !$request->package_price){
@@ -103,9 +112,7 @@ class ConsultationController extends Controller
                 ]);
             }
     
-            // =========================================
             // CASE 2 : KONSULTAN BAYAR
-            // =========================================
             $service = MentorService::where('mentor_id',$mentor->id)
                 ->where('service_type_id',$request->service_type_id)
                 ->first();
@@ -190,6 +197,12 @@ class ConsultationController extends Controller
                 return response()->json(['message'=>'Session expired'],403);
             }
     
+            if($consult->mentor->current_consultation_id != $consult->id){
+                return response()->json([
+                   'message'=>'Session sudah tidak valid'
+                ],409);
+             }
+             
             // VALIDASI PESERTA
             $userId = auth()->id();
     
@@ -274,6 +287,7 @@ class ConsultationController extends Controller
             'token'=>$token,
             'channel'=>'chat_'.$consult->id,
             'uid'=>$userId,
+            'started_at'=>$consult->started_at,
             'ended_at'=>$consult->ended_at
         ]);
     }

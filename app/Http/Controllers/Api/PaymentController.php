@@ -198,12 +198,13 @@ class PaymentController extends Controller
                 'current_consultation_id'=>$consult->id
             ]);
 
+            $timePay = 10;
             // START SESSION
             $consult->update([
                 'payment_status'=>'paid',
                 'status'=>'active',
                 'started_at'=>now(),
-                'ended_at'=>now()->addMinutes($consult->duration_minutes)
+                'ended_at'=>now()->addMinutes($consult->duration_minutes + $timePay)
             ]);
 
             DB::commit();
@@ -329,6 +330,12 @@ class PaymentController extends Controller
                 $payment = Payments::lockForUpdate()->find($payment->id);
                 $consult = Consultation::lockForUpdate()->find($payment->consultation_id);
         
+                // webhook retry safety
+                if($consult->payment_status == 'paid'){
+                    DB::commit();
+                    return response()->json(['success'=>true]);
+                }
+
                 // kunci ketersediaan mentor
                 $mentor = Mentor::lockForUpdate()->find($consult->mentor_id);
         
@@ -336,18 +343,20 @@ class PaymentController extends Controller
                     DB::rollBack();
                     return response()->json(['error'=>'mentor not found']);
                 }
-        
-                // cek slot
-                if($mentor->current_consultation_id){
-        
+                
+                // cek apakah slot masih tersedia
+                if(
+                    $mentor->current_consultation_id && 
+                    $mentor->current_consultation_id != $consult->id
+                ){
                     // terlambat bayar
                     $payment->update(['status'=>'failed']);
-        
+                
                     DB::commit();
-        
+                
                     return response()->json([
                         'success'=>true,
-                        'message'=>'slot already taken'
+                        'message'=>'slot already taken by another user'
                     ]);
                 }
         
@@ -368,7 +377,7 @@ class PaymentController extends Controller
                     'payment_status'=>'paid',
                     'status'=>'active',
                     'started_at'=>now(),
-                    'ended_at'=>now()->addMinutes($consult->duration_minutes)
+                    'ended_at'=>now()->addMinutes($consult->duration_minutes + 10)
                 ]);
         
                 DB::commit();
