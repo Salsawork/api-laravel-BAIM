@@ -20,6 +20,8 @@ Route::middleware(['auth:api'])->group(function () {
     Route::post('/mentors/regis', [MentorController::class, 'registerMentor']);
     Route::post('/mentors/detail/{id}', [MentorController::class, 'detail']);
     Route::post('/mentors/list', [MentorController::class, 'listMentors']);
+    Route::get('/mentors/type/{userTypeId}', [MentorController::class, 'getByUserType']);
+
     Route::post('/toggle/online', [MentorController::class, 'toggleOnline']);
     Route::post('/mentors/presence', [MentorController::class, 'mentorPresence']);
     

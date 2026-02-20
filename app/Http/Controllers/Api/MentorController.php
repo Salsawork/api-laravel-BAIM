@@ -196,6 +196,7 @@ class MentorController extends Controller
     
         $mentors = $query
             ->with([
+                'user:id,name,profile_photo_path',
                 'services.serviceType',
                 'topics.topic'
             ])
@@ -211,9 +212,41 @@ class MentorController extends Controller
         ]);
     }
     
+    public function getByUserType(Request $request, $userTypeId)
+    {
+        $query = Mentor::query()
+            ->where('user_type_id', $userTypeId)
+            ->where('is_verified', 1);
+
+        // optional filter online only
+        if ($request->online_only) {
+            $query->where('is_online', 1);
+        }
+
+        // optional search
+        if ($request->search) {
+            $query->where('full_name', 'like', '%' . $request->search . '%');
+        }
+
+        $mentors = $query
+            ->with([
+                'user:id,name,profile_photo_path',
+                'services.serviceType',
+                'topics.topic'
+            ])
+            ->orderByDesc('rating_avg')
+            ->get();
+
+        return response()->json([
+            'status' => true,
+            'data' => $mentors
+        ]);
+    }
+
     public function detail($id)
     {
         $mentor = Mentor::with([
+            'user:id,name,profile_photo_path',
             'services.serviceType',
             'topics.topic'
         ])
@@ -309,7 +342,7 @@ class MentorController extends Controller
             ],403);
         }
 
-        // ❌ toggle off manual
+        // toggle off manual
         if(!$mentor->is_online){
             return response()->json([
                 'success'=>false,
@@ -317,7 +350,7 @@ class MentorController extends Controller
             ],403);
         }
 
-        // ❌ auto offline karena last_seen lama
+        // auto offline karena last_seen lama
         if($mentor->last_seen && $mentor->last_seen < now()->subSeconds(60)){
             
             $mentor->update([
@@ -356,7 +389,7 @@ class MentorController extends Controller
         }
     
         $query = Consultation::with([
-                'customer:id,name,email,profile_photo_path',
+                'customer:id,name,email,phone,address,profile_photo_path',
                 'payment:id,consultation_id,status,paid_at'
             ])
             ->where('mentor_id', $mentor->id);
@@ -418,7 +451,7 @@ class MentorController extends Controller
     
         // ambil consultation
         $consult = Consultation::with([
-            'customer:id,name,email,profile_photo_path',
+            'customer:id,name,email,phone,address,profile_photo_path',
             'payment:id,consultation_id,status,paid_at',
             'service:id,name',
             'topic:id,name'

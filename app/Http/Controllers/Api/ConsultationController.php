@@ -89,7 +89,7 @@ class ConsultationController extends Controller
                     'price'=>0,
     
                     'duration_minutes'=>60,
-                    'payment_status'=>'free',
+                    'payment_status'=>'paid',
                     'status'=>'active',
                     'started_at'=>now(),
                     'ended_at'=>now()->addMinutes(60)
@@ -197,11 +197,11 @@ class ConsultationController extends Controller
                 return response()->json(['message'=>'Session expired'],403);
             }
     
-            if($consult->mentor->current_consultation_id != $consult->id){
-                return response()->json([
-                   'message'=>'Session sudah tidak valid'
-                ],409);
-             }
+            // if($consult->mentor->current_consultation_id != $consult->id){
+            //     return response()->json([
+            //        'message'=>'Session sudah tidak valid'
+            //     ],409);
+            //  }
              
             // VALIDASI PESERTA
             $userId = auth()->id();
