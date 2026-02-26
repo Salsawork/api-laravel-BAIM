@@ -13,4 +13,9 @@ class Fee extends Model
         'value',
         'description',
     ];
+
+    public static function getValue($key, $default = 0)
+    {
+        return static::where('key_name',$key)->value('value') ?? $default;
+    }
 }

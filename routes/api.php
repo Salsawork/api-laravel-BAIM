@@ -3,13 +3,15 @@
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\MentorController;
+use App\Http\Controllers\Api\ScheduleController;
+
 use App\Http\Controllers\Api\ConsultationController;
 use App\Http\Controllers\Api\UserTypeController;
 use App\Http\Controllers\Api\TopicCategoryController;
 use App\Http\Controllers\Api\ServiceTypeController;
-// use App\Http\Controllers\Api\ScheduleController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\BankController;
+use App\Http\Controllers\Api\ReviewController;
 
 // Route::get('/user', function (Request $request) {
 //     return $request->user();
@@ -24,11 +26,19 @@ Route::middleware(['auth:api'])->group(function () {
 
     Route::post('/toggle/online', [MentorController::class, 'toggleOnline']);
     Route::post('/mentors/presence', [MentorController::class, 'mentorPresence']);
+    Route::get('/mentors/isverified', [MentorController::class, 'isVerified']);
     
     Route::post('/mentors/consul', [MentorController::class, 'mentorConsultations']);
     Route::post('/mentors/consul/detail/{id}', [MentorController::class, 'detailConsultation']);
 
+    Route::post('/mentors/schedule',[ScheduleController::class,'createSchedule']);
+    Route::put('/mentors/schedule/{id}',[ScheduleController::class,'updateSchedule']);
+    Route::post('/mentors/delete/schedule/{id}',[ScheduleController::class,'deleteSchedule']);
+    Route::get('/mentors/get-schedules',[ScheduleController::class,'mySchedules']);
+
     Route::post('/consultations/booking', [ConsultationController::class, 'booking']);
+    Route::post('/booking/realtime', [ConsultationController::class, 'bookingRealtime']);
+    Route::post('/booking/schedule', [ConsultationController::class, 'bookingScheduled']);
     // join room setelah paid
     Route::post('/join-room/{orderNumber}', [ConsultationController::class,'joinRoom']);
     Route::post('/join-chat/{orderNumber}', [ConsultationController::class,'joinChat']);
@@ -47,16 +57,25 @@ Route::middleware(['auth:api'])->group(function () {
     Route::post('/payment/verify/{paymentId}', [PaymentController::class,'verifyManual']);
      Route::get('/payment/status/{orderNumber}', [PaymentController::class,'checkStatus']);
 
-   
+     Route::post('/review', [ReviewController::class,'store']);
+    Route::delete('/mentors/schedule/{id}',[ScheduleController::class,'deleteSchedule']);
+     Route::put('/review/{id}', [ReviewController::class,'update']);
+     Route::delete('/review/{id}', [ReviewController::class,'destroy']);
+ 
     // Route::post('/mentors/schedule', [ScheduleController::class, 'createSchedule']);
     Route::post('/consultations/pay', [ConsultationController::class, 'testPayment']);
 });
+
  // Get data
  Route::get('/user_types', [UserTypeController::class, 'userTypes']);
  Route::get('/banks', [BankController::class, 'banks']);
  Route::get('/topics/{id}', [TopicCategoryController::class, 'topics']);
  Route::get('/services', [ServiceTypeController::class, 'services']);
 
+ Route::get('/mentor/{id}/reviews', [ReviewController::class,'mentorReviews']);
+ Route::get('/mentor/{id}/rating', [ReviewController::class,'mentorRating']);
+
+ Route::get('/mentors/{id}/schedules',[ScheduleController::class,'getMentorSchedules']);
 
 // Route::post('/xendit/callback', [PaymentController::class,'callback']);
 

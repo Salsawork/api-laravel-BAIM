@@ -15,124 +15,472 @@ use App\Models\Schedule;
 
 class ConsultationController extends Controller
 {
-    public function booking(Request $request)
+    // public function booking(Request $request)
+    // {
+    //     $request->validate([
+    //         'mentor_id' => 'required|exists:mentors,id',
+    //         'service_type_id' => 'nullable|exists:service_types,id',
+    //         'topic_category_id' => 'required|exists:topic_categories,id',
+    
+    //         // khusus muthowif
+    //         'departure_date' => 'nullable|date',
+    //         'people_count' => 'nullable|integer|min:1',
+    //         'package_price' => 'nullable|numeric|min:0'
+    //     ]);
+    
+    //     $user = auth()->user();
+    
+    //     DB::beginTransaction();
+    
+    //     try {
+    
+    //         $mentor = Mentor::lockForUpdate()->find($request->mentor_id);
+    
+    //         if(!$mentor){
+    //             return response()->json(['status'=>false,'message'=>'Mentor not found'],404);
+    //         }
+    
+    //         if(!$mentor->is_online){
+    //             return response()->json(['status'=>false,'message'=>'Mentor offline'],409);
+    //         }
+    
+    //         $existingPending = Consultation::where('mentor_id',$mentor->id)
+    //             ->whereIn('status',['pending','active'])
+    //             ->exists();
+
+    //         if($existingPending){
+    //         return response()->json([
+    //             'status'=>false,
+    //             'message'=>'Mentor sedang ada booking aktif'
+    //         ],409);
+    //         }
+
+    //         // cek mentor busy
+    //         if(!is_null($mentor->current_consultation_id)){
+    //             return response()->json([
+    //                 'status'=>false,
+    //                 'message'=>'Mentor sedang melayani user lain'
+    //             ],409);
+    //         }            
+    
+    //         $orderNumber = 'BAIM-'.time().rand(100,999);
+    
+    //         // CASE 1 : MUTHOWIF (FREE CHAT)
+    //         if($mentor->user_type_id == 1){
+    
+    //             if(!$request->departure_date || !$request->people_count || !$request->package_price){
+    //                 return response()->json([
+    //                     'status'=>false,
+    //                     'message'=>'Isi tanggal, jumlah orang, dan harga paket'
+    //                 ],422);
+    //             }
+    
+    //             $consult = Consultation::create([
+    //                 'order_number'=>$orderNumber,
+    //                 'customer_user_id'=>$user->id,
+    //                 'mentor_id'=>$mentor->id,
+    //                 'service_type_id'=>1, // chat only
+    //                 'topic_category_id'=>$request->topic_category_id,
+    //                 'departure_date'=>$request->departure_date,
+    
+    //                 'people_count'=>$request->people_count,
+    //                 'package_price'=>$request->package_price,
+    //                 'total_price'=>$request->package_price * $request->people_count,
+    //                 'price'=>0,
+    
+    //                 'duration_minutes'=>60,
+    //                 'payment_status'=>'paid',
+    //                 'status'=>'active',
+    //                 'started_at'=>now(),
+    //                 'ended_at'=>now()->addMinutes(60)
+    //             ]);
+    
+    //             // lock mentor
+    //             $mentor->update([
+    //                 'current_consultation_id'=>$consult->id
+    //             ]);
+    
+    //             DB::commit();
+    
+    //             return response()->json([
+    //                 'status'=>true,
+    //                 'message'=>'Chat muthowif dimulai (gratis)',
+    //                 'data'=>[
+    //                     'order_number'=>$consult->order_number,
+    //                     'consultation_id'=>$consult->id
+    //                 ]
+    //             ]);
+    //         }
+    
+    //         // CASE 2 : KONSULTAN BAYAR
+    //         $service = MentorService::where('mentor_id',$mentor->id)
+    //             ->where('service_type_id',$request->service_type_id)
+    //             ->first();
+    
+    //         if(!$service){
+    //             return response()->json([
+    //                 'status'=>false,
+    //                 'message'=>'Service tidak tersedia'
+    //             ],404);
+    //         }
+    
+    //         $consult = Consultation::create([
+    //             'order_number'=>$orderNumber,
+    //             'customer_user_id'=>$user->id,
+    //             'mentor_id'=>$mentor->id,
+    //             'service_type_id'=>$request->service_type_id,
+    //             'topic_category_id'=>$request->topic_category_id,
+    
+    //             'price'=>$service->price,
+    //             'duration_minutes'=>$service->duration_minutes ?? 60,
+    
+    //             'status'=>'pending',
+    //             'payment_status'=>'waiting',
+    //             'expired_at'=>now()->addMinutes(10)
+    //         ]);
+    
+    //         DB::commit();
+    
+    //         return response()->json([
+    //             'status'=>true,
+    //             'message'=>'Booking berhasil, lanjut pembayaran',
+    //             'data'=>[
+    //                 'consultation_id'=>$consult->id,
+    //                 'order_number'=>$consult->order_number,
+    //                 'price'=>$consult->price
+    //             ]
+    //         ]);
+    
+    //     } catch (\Exception $e){
+    //         DB::rollBack();
+    //         return response()->json([
+    //             'status'=>false,
+    //             'message'=>$e->getMessage()
+    //         ],500);
+    //     }
+    // }
+    public function bookingRealtime(Request $request)
     {
         $request->validate([
-            'mentor_id' => 'required|exists:mentors,id',
-            'service_type_id' => 'nullable|exists:service_types,id',
-            'topic_category_id' => 'required|exists:topic_categories,id',
-    
-            // khusus muthowif
-            'departure_date' => 'nullable|date',
-            'people_count' => 'nullable|integer|min:1',
-            'package_price' => 'nullable|numeric|min:0'
+            'mentor_id'=>'required|exists:mentors,id',
+            'service_type_id'=>'required|exists:service_types,id',
+            'topic_category_id'=>'required|exists:topic_categories,id',
+            'duration_hours'=>'required|integer|min:1|max:6'
         ]);
-    
+
         $user = auth()->user();
-    
         DB::beginTransaction();
-    
-        try {
-    
+
+        try{
+
             $mentor = Mentor::lockForUpdate()->find($request->mentor_id);
-    
+            
             if(!$mentor){
                 return response()->json(['status'=>false,'message'=>'Mentor not found'],404);
             }
-    
+
             if(!$mentor->is_online){
                 return response()->json(['status'=>false,'message'=>'Mentor offline'],409);
             }
-    
-            $existingPending = Consultation::where('mentor_id',$mentor->id)
-                ->whereIn('status',['pending','active'])
-                ->exists();
 
-            if($existingPending){
-            return response()->json([
-                'status'=>false,
-                'message'=>'Mentor sedang ada booking aktif'
-            ],409);
-            }
-
-            // cek mentor busy
-            if(!is_null($mentor->current_consultation_id)){
+            if($mentor->current_consultation_id){
                 return response()->json([
                     'status'=>false,
                     'message'=>'Mentor sedang melayani user lain'
                 ],409);
-            }            
-    
-            $orderNumber = 'BAIM-'.time().rand(100,999);
-    
-            // CASE 1 : MUTHOWIF (FREE CHAT)
-            if($mentor->user_type_id == 1){
-    
-                if(!$request->departure_date || !$request->people_count || !$request->package_price){
-                    return response()->json([
-                        'status'=>false,
-                        'message'=>'Isi tanggal, jumlah orang, dan harga paket'
-                    ],422);
-                }
-    
-                $consult = Consultation::create([
-                    'order_number'=>$orderNumber,
-                    'customer_user_id'=>$user->id,
-                    'mentor_id'=>$mentor->id,
-                    'service_type_id'=>1, // chat only
-                    'topic_category_id'=>$request->topic_category_id,
-                    'departure_date'=>$request->departure_date,
-    
-                    'people_count'=>$request->people_count,
-                    'package_price'=>$request->package_price,
-                    'total_price'=>$request->package_price * $request->people_count,
-                    'price'=>0,
-    
-                    'duration_minutes'=>60,
-                    'payment_status'=>'paid',
-                    'status'=>'active',
-                    'started_at'=>now(),
-                    'ended_at'=>now()->addMinutes(60)
-                ]);
-    
-                // lock mentor
-                $mentor->update([
-                    'current_consultation_id'=>$consult->id
-                ]);
-    
-                DB::commit();
-    
-                return response()->json([
-                    'status'=>true,
-                    'message'=>'Chat muthowif dimulai (gratis)',
-                    'data'=>[
-                        'order_number'=>$consult->order_number,
-                        'consultation_id'=>$consult->id
-                    ]
-                ]);
             }
-    
-            // CASE 2 : KONSULTAN BAYAR
-            $service = MentorService::where('mentor_id',$mentor->id)
-                ->where('service_type_id',$request->service_type_id)
+
+            // CEK MENTOR SEDANG SESI
+            // $busy = Consultation::where('mentor_id',$mentor->id)
+            // ->where(function($q){
+            //     $q->where('status','active')
+            //       ->orWhere(function($q2){
+            //           $q2->where('status','pending')
+            //              ->where('payment_status','paid');
+            //       });
+            // })
+            // ->where(function($q){
+            //     $q->whereNull('scheduled_start')
+            //     ->orWhere(function($q2){
+            //         $q2->whereNotNull('scheduled_start')
+            //             ->where('scheduled_start','<=',now())
+            //             ->where('scheduled_end','>=',now());
+            //     });
+            // })->exists();
+
+            // if($busy){
+            //     return response()->json([
+            //         'status'=>false,
+            //         'message'=>'Mentor sedang melayani user lain'
+            //     ],409);
+            // }
+
+            // CEK SCHEDULE HARI INI
+            $schedule = Schedule::where('mentor_id',$mentor->id)
+                ->where('is_active',1)
+                ->whereDate('date',now()->toDateString())
                 ->first();
-    
-            if(!$service){
+
+            if(!$schedule){
                 return response()->json([
                     'status'=>false,
-                    'message'=>'Service tidak tersedia'
+                    'message'=>'Mentor tidak memiliki jadwal hari ini'
+                ],422);
+            }
+
+            $now = now();
+            $scheduleStart = Carbon::parse($schedule->date.' '.$schedule->start_time);
+            $scheduleEnd   = Carbon::parse($schedule->date.' '.$schedule->end_time);
+
+            if($now < $scheduleStart || $now > $scheduleEnd){
+                return response()->json([
+                    'status'=>false,
+                    'message'=>'Diluar jam kerja mentor'
+                ],422);
+            }
+
+            // CEK DURASI TIDAK MELEBIHI SCHEDULE
+            $duration = $request->duration_hours;
+            $endSession = $now->copy()->addHours($duration);
+
+            if($endSession > $scheduleEnd){
+                return response()->json([
+                    'status'=>false,
+                    'message'=>'Durasi melebihi jam schedule mentor'
+                ],422);
+            }
+
+            // CEK TABRAK FUTURE BOOKING
+            $future = Consultation::where('mentor_id',$mentor->id)
+                ->where(function($q){
+                    $q->where('status','active')
+                    ->orWhere(function($q2){
+                        $q2->where('status','pending')
+                            ->where('payment_status','paid');
+                    });
+                })
+                ->whereNotNull('scheduled_start')
+                ->where('scheduled_start','>',now())
+                ->orderBy('scheduled_start')
+                ->first();
+
+            if($future){
+                $futureStart = Carbon::parse($future->scheduled_start);
+
+                if($endSession > $futureStart){
+                    return response()->json([
+                        'status'=>false,
+                        'message'=>'Mentor memiliki booking terjadwal setelah ini'
+                    ],409);
+                }
+            }
+
+            // HITUNG HARGA
+            if($mentor->user_type_id == 1){
+                // MUTHOWIF
+                $pricePerHour = $schedule->price;
+            }else{
+                // KONSULTAN
+                $service = MentorService::where('mentor_id',$mentor->id)
+                    ->where('service_type_id',$request->service_type_id)
+                    ->first();
+
+                if(!$service){
+                    return response()->json([
+                        'status'=>false,
+                        'message'=>'Service tidak tersedia'
+                    ],404);
+                }
+
+                $pricePerHour = $service->price;
+            }
+
+            $total = $pricePerHour * $duration;
+            $minutes = $duration * 60;
+
+            $order = 'BAIM-'.time().rand(100,999);
+
+            $consult = Consultation::create([
+                'order_number'=>$order,
+                'customer_user_id'=>$user->id,
+                'mentor_id'=>$mentor->id,
+                'service_type_id'=>$request->service_type_id,
+                'topic_category_id'=>$request->topic_category_id,
+
+                'duration_hours'=>$duration,
+                'duration_minutes'=>$minutes,
+
+                'price'=>$pricePerHour,
+                'total_price'=>$total,
+
+                'status'=>'pending',
+                'payment_status'=>'waiting',
+                'expired_at'=>now()->addMinutes(10)
+            ]);
+
+            DB::commit();
+
+            return response()->json([
+                'status'=>true,
+                'message'=>'Booking realtime berhasil',
+                'data'=>[
+                    'consultation_id'=>$consult->id,
+                    'order_number'=>$consult->order_number,
+                    'price_per_hour'=>$pricePerHour,
+                    'duration_hours'=>$duration,
+                    'total_price'=>$total
+                ]
+            ]);
+
+        }catch(\Exception $e){
+            DB::rollBack();
+            return response()->json([
+                'status'=>false,
+                'message'=>$e->getMessage()
+            ],500);
+        }
+    }
+
+    public function bookingScheduled(Request $request)
+    {
+        $request->validate([
+            'mentor_id'=>'required|exists:mentors,id',
+            'schedule_id'=>'required|exists:mentor_schedules,id',
+            'service_type_id'=>'required|exists:service_types,id',
+            'topic_category_id'=>'required|exists:topic_categories,id',
+            'date'=>'required|date',
+            'start_time'=>'required',
+            'duration_hours'=>'required|integer|min:1|max:12'
+        ]);
+    
+        $user = auth()->user();
+        DB::beginTransaction();
+    
+        try{
+    
+            $mentor = Mentor::lockForUpdate()->find($request->mentor_id);
+            
+            if(!$mentor){
+                return response()->json([
+                    'status'=>false,
+                    'message'=>'Mentor tidak ditemukan'
                 ],404);
             }
     
+            $schedule = Schedule::where('id',$request->schedule_id)
+                ->where('mentor_id',$mentor->id)
+                ->where('is_active',1)
+                ->first();
+    
+            if(!$schedule){
+                return response()->json([
+                    'status'=>false,
+                    'message'=>'Schedule tidak ditemukan'
+                ],404);
+            }
+    
+            // datetime start end
+            $start = Carbon::parse($request->date.' '.$request->start_time);
+            if($start < now()){
+                return response()->json([
+                    'status'=>false,
+                    'message'=>'Tidak bisa booking waktu yang sudah lewat'
+                ],422);
+            }
+
+            $end   = (clone $start)->addHours($request->duration_hours);
+    
+            $scheduleStart = Carbon::parse($schedule->date.' '.$schedule->start_time);
+            $scheduleEnd   = Carbon::parse($schedule->date.' '.$schedule->end_time);
+    
+            if($start < $scheduleStart || $end > $scheduleEnd){
+                return response()->json([
+                    'status'=>false,
+                    'message'=>'Diluar jam schedule mentor'
+                ],422);
+            }
+    
+            // jika mentor online & jam sedang berjalan → pakai realtime
+            if($mentor->is_online){
+                $now = now();
+                if($now >= $scheduleStart && $now <= $scheduleEnd){
+                    return response()->json([
+                        'status'=>false,
+                        'message'=>'Mentor sedang online, gunakan realtime booking'
+                    ],422);
+                }
+            }
+    
+            // CEK BENTROK BOOKING
+            $conflict = Consultation::where('mentor_id',$mentor->id)
+                ->where(function($q){
+                    $q->where('status','active')
+                    ->orWhere(function($q2){
+                        $q2->where('status','pending')
+                            ->where('payment_status','paid');
+                    });
+                })
+                ->whereNotNull('scheduled_start')
+                ->where(function($q) use ($start,$end){
+                    $q->whereBetween('scheduled_start',[$start,$end])
+                    ->orWhereBetween('scheduled_end',[$start,$end])
+                    ->orWhere(function($q2) use ($start,$end){
+                        $q2->where('scheduled_start','<=',$start)
+                           ->where('scheduled_end','>=',$end);
+                    });
+                })
+                ->exists();
+    
+            if($conflict){
+                return response()->json([
+                    'status'=>false,
+                    'message'=>'Slot sudah dibooking user lain'
+                ],409);
+            }
+    
+            // HITUNG HARGA
+            if($mentor->user_type_id == 1){
+                // MUTHOWIF
+                $pricePerHour = $schedule->price;
+            }else{
+                // KONSULTAN
+                $service = MentorService::where('mentor_id',$mentor->id)
+                    ->where('service_type_id',$request->service_type_id)
+                    ->first();
+    
+                if(!$service){
+                    return response()->json([
+                        'status'=>false,
+                        'message'=>'Service tidak tersedia'
+                    ],404);
+                }
+    
+                $pricePerHour = $service->price;
+            }
+    
+            $duration = $request->duration_hours;
+            $total    = $pricePerHour * $duration;
+            $minutes  = $duration * 60;
+    
+            $order = 'BAIM-'.time().rand(100,999);
+    
             $consult = Consultation::create([
-                'order_number'=>$orderNumber,
+                'order_number'=>$order,
                 'customer_user_id'=>$user->id,
                 'mentor_id'=>$mentor->id,
                 'service_type_id'=>$request->service_type_id,
                 'topic_category_id'=>$request->topic_category_id,
     
-                'price'=>$service->price,
-                'duration_minutes'=>$service->duration_minutes ?? 60,
+                'schedule_id'=>$schedule->id,
+    
+                'duration_hours'=>$duration,
+                'duration_minutes'=>$minutes,
+    
+                'price'=>$pricePerHour,
+                'total_price'=>$total,
+    
+                'scheduled_start'=>$start,
+                'scheduled_end'=>$end,
     
                 'status'=>'pending',
                 'payment_status'=>'waiting',
@@ -143,15 +491,19 @@ class ConsultationController extends Controller
     
             return response()->json([
                 'status'=>true,
-                'message'=>'Booking berhasil, lanjut pembayaran',
+                'message'=>'Booking terjadwal berhasil',
                 'data'=>[
                     'consultation_id'=>$consult->id,
                     'order_number'=>$consult->order_number,
-                    'price'=>$consult->price
+                    'price_per_hour'=>$pricePerHour,
+                    'duration_hours'=>$duration,
+                    'total_price'=>$total,
+                    'start'=>$start,
+                    'end'=>$end
                 ]
             ]);
     
-        } catch (\Exception $e){
+        }catch(\Exception $e){
             DB::rollBack();
             return response()->json([
                 'status'=>false,
@@ -159,7 +511,65 @@ class ConsultationController extends Controller
             ],500);
         }
     }
-    
+
+    public function getAvailableSlots($mentorId, Request $request)
+    {
+        $request->validate([
+            'date'=>'required|date'
+        ]);
+
+        $mentor = Mentor::find($mentorId);
+        if(!$mentor){
+            return response()->json(['status'=>false,'message'=>'Mentor not found'],404);
+        }
+
+
+        $schedule = Schedule::where('mentor_id',$mentor->id)
+            ->whereDate('date',$request->date)
+            ->where('is_active',1)
+            ->first();
+
+        if(!$schedule){
+            return response()->json([
+                'status'=>false,
+                'message'=>'Tidak ada schedule di tanggal ini'
+            ]);
+        }
+
+        $start = Carbon::parse($schedule->date.' '.$schedule->start_time);
+        $end   = Carbon::parse($schedule->date.' '.$schedule->end_time);
+
+        $slots = [];
+
+        while($start < $end){
+            $slots[] = $start->format('H:i');
+            $start->addHour();
+        }
+
+        // hapus slot yg sudah dibooking
+        $booked = Consultation::where('mentor_id',$mentor->id)
+            ->whereDate('scheduled_start',$request->date)
+            ->where(function($q){
+                $q->where('status','active')
+                  ->orWhere(function($q2){
+                      $q2->where('status','pending')
+                         ->where('payment_status','paid');
+                  });
+            })
+            ->pluck('scheduled_start')
+            ->map(fn($d)=>Carbon::parse($d)->format('H:i'))
+            ->toArray();
+
+        $available = array_values(array_diff($slots,$booked));
+
+        return response()->json([
+            'status'=>true,
+            'mentor'=>$mentor->full_name,
+            'price_per_hour'=>$schedule->price,
+            'slots'=>$available
+        ]);
+    }
+
     public function joinRoom($orderNumber)
     {
         DB::beginTransaction();
@@ -171,7 +581,7 @@ class ConsultationController extends Controller
                 ->where('order_number',$orderNumber)
                 ->firstOrFail();
     
-            // HANYA UNTUK CALL & VIDEO
+            // hanya call/video
             if(!in_array($consult->service_type_id,[2,3])){
                 DB::rollBack();
                 return response()->json([
@@ -179,50 +589,55 @@ class ConsultationController extends Controller
                 ],403);
             }
     
-            // HARUS SUDAH BAYAR
+            // harus sudah bayar
             if ($consult->payment_status != 'paid') {
                 DB::rollBack();
                 return response()->json(['message'=>'Belum bayar'],403);
             }
     
-            // SESSION HARUS ACTIVE
+            // harus active
             if ($consult->status != 'active') {
                 DB::rollBack();
                 return response()->json(['message'=>'Session not active'],403);
             }
     
-            // SESSION EXPIRED?
+            // BELUM WAKTUNYA (scheduled)
+            if($consult->started_at && now()->lt($consult->started_at)){
+                DB::rollBack();
+                return response()->json([
+                    'message'=>'Session belum dimulai'
+                ],403);
+            }
+    
+            // expired
             if ($consult->ended_at && now()->gt($consult->ended_at)) {
                 DB::rollBack();
                 return response()->json(['message'=>'Session expired'],403);
             }
     
-            // if($consult->mentor->current_consultation_id != $consult->id){
-            //     return response()->json([
-            //        'message'=>'Session sudah tidak valid'
-            //     ],409);
-            //  }
-             
-            // VALIDASI PESERTA
-            $userId = auth()->id();
-    
-            if (!$consult->mentor) {
+            // mentor slot masih valid?
+            if($consult->status == 'active' && $consult->mentor->current_consultation_id != $consult->id){
                 DB::rollBack();
-                return response()->json(['message'=>'Mentor not found'],404);
+                return response()->json([
+                    'message'=>'Session sudah tidak valid'
+                ],409);
             }
+    
+            // validasi user
+            $userId = auth()->id();
     
             if ($consult->customer_user_id != $userId && $consult->mentor->user_id != $userId) {
                 DB::rollBack();
                 return response()->json(['message'=>'Not allowed'],403);
             }
     
-            // GENERATE CHANNEL
+            // generate channel
             if (!$consult->agora_channel) {
                 $consult->agora_channel = 'consult_'.$consult->id;
                 $consult->save();
             }
     
-            // GENERATE RTC TOKEN
+            // generate token agora
             $token = app(\App\Services\AgoraService::class)
                 ->buildToken($consult->agora_channel, $userId, 7200);
     
@@ -243,45 +658,48 @@ class ConsultationController extends Controller
         }
     }
     
-    
     public function joinChat($orderNumber)
     {
-        $consult = Consultation::where('order_number',$orderNumber)
+        $consult = Consultation::with('mentor')
+            ->where('order_number',$orderNumber)
             ->firstOrFail();
-
-        // harus chat service
+    
         if($consult->service_type_id != 1){
             return response()->json(['message'=>'Bukan layanan chat'],403);
         }
-
-        // harus sudah bayar
+    
         if($consult->payment_status != 'paid'){
             return response()->json(['message'=>'Belum bayar'],403);
         }
-
-        // session harus aktif
+    
         if($consult->status != 'active'){
             return response()->json(['message'=>'Session not active'],403);
         }
-
-        // session expired?
+    
+        // belum waktunya (scheduled)
+        if($consult->started_at && now()->lt($consult->started_at)){
+            return response()->json(['message'=>'Session belum dimulai'],403);
+        }
+    
+        // expired
         if($consult->ended_at && now()->gt($consult->ended_at)){
             return response()->json(['message'=>'Session expired'],403);
         }
-
+    
+        // slot valid?
+        if($consult->status == 'active' && $consult->mentor->current_consultation_id != $consult->id){
+            return response()->json(['message'=>'Session sudah tidak valid'],409);
+        }
+    
         $userId = auth()->id();
-
-        // validasi peserta
-        $mentorUserId = $consult->mentor->user_id;
-
-        if($userId != $consult->customer_user_id && $userId != $mentorUserId){
+    
+        if($userId != $consult->customer_user_id && $userId != $consult->mentor->user_id){
             return response()->json(['message'=>'Not allowed'],403);
         }
-
-        // token chat
+    
         $token = app(\App\Services\AgoraChatService::class)
             ->buildToken($userId);
-
+    
         return response()->json([
             'app_id'=>config('services.agora.app_id'),
             'token'=>$token,
@@ -292,18 +710,17 @@ class ConsultationController extends Controller
         ]);
     }
 
-
     public function endSession($orderNumber)
     {
         DB::beginTransaction();
-
+    
         try{
-
+    
             $consult = Consultation::lockForUpdate()
+                ->with('mentor')
                 ->where('order_number',$orderNumber)
                 ->firstOrFail();
-
-            // validasi status active
+    
             if($consult->status !== 'active'){
                 DB::rollBack();
                 return response()->json([
@@ -311,34 +728,34 @@ class ConsultationController extends Controller
                     'message'=>'Session not active'
                 ],400);
             }
-
-            // VALIDASI USER (MENTOR ATAU CUSTOMER)
+    
             $userId = auth()->id();
+    
             if($consult->customer_user_id != $userId && $consult->mentor->user_id != $userId){
                 DB::rollBack();
                 return response()->json(['message'=>'Not allowed'],403);
             }
-
-            // update status completed
+    
+            // completed
             $consult->update([
                 'status'=>'completed',
-                'ended_at'=>now()
+                'ended_at'=>$consult->ended_at ?? now()
             ]);
-
-            // FREE MENTOR SLOT
+    
+            // free mentor slot
             Mentor::where('id',$consult->mentor_id)
                 ->lockForUpdate()
                 ->update([
                     'current_consultation_id'=>null
                 ]);
-
+    
             DB::commit();
-
+    
             return response()->json([
                 'success'=>true,
                 'message'=>'Session ended'
             ]);
-
+    
         } catch(\Exception $e){
             DB::rollBack();
             return response()->json(['error'=>$e->getMessage()],500);
@@ -394,7 +811,7 @@ class ConsultationController extends Controller
         $query = Consultation::with([
             'customer:id,name,email,profile_photo_path',
             'service:id,name',
-            'payment:id,consultation_id,status,paid_at,total'
+             'payment:id,consultation_id,status,paid_at,total'
         ])
         ->where('mentor_id',$mentor->id);
 

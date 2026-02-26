@@ -4,59 +4,61 @@ namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
 use App\Models\Consultation;
-use App\Models\Mentor;
-use DB;
+use Illuminate\Support\Facades\DB;
 
 class AutoCancelConsultation extends Command
 {
     protected $signature = 'consult:auto-cancel';
-    protected $description = 'Auto cancel consultation if not paid after 10 minutes';
+    protected $description = 'Auto cancel consultation if not paid after expiry';
 
     public function handle()
     {
         $now = now();
-    
-        $consultations = Consultation::where('payment_status','waiting')
-            ->where('expired_at','<',$now)
+
+        $consultations = Consultation::where('status','pending')
+            ->where('payment_status','waiting')
+            ->whereNotNull('expired_at')
+            ->where('expired_at','<=',$now)
             ->get();
-    
-        foreach($consultations as $consult){
-    
+
+        foreach($consultations as $row){
+
             DB::beginTransaction();
-    
+
             try{
-    
-                $consult = Consultation::lockForUpdate()->find($consult->id);
-    
-                if($consult->payment_status != 'waiting'){
+
+                $consult = Consultation::lockForUpdate()->find($row->id);
+
+                if(!$consult){
                     DB::rollBack();
                     continue;
                 }
-    
-                // cancel consultation
+
+                // double safety check (race condition payment)
+                if(
+                    $consult->status !== 'pending' ||
+                    $consult->payment_status !== 'waiting'
+                ){
+                    DB::rollBack();
+                    continue;
+                }
+
+                // cancel
                 $consult->update([
                     'status'=>'cancelled',
-                    'payment_status'=>'failed'
+                    'payment_status'=>'expired'
                 ]);
-    
-                // free mentor slot
-                Mentor::where('current_consultation_id',$consult->id)
-                    ->lockForUpdate()
-                    ->update([
-                        'current_consultation_id'=>null
-                    ]);
-    
+
                 DB::commit();
-    
-                $this->info("Cancelled consultation ID ".$consult->id);
-    
-            } catch(\Exception $e){
+
+                $this->info("Auto cancelled consultation ID {$consult->id}");
+
+            }catch(\Throwable $e){
                 DB::rollBack();
                 $this->error($e->getMessage());
             }
         }
-    
+
         return Command::SUCCESS;
     }
-    
 }

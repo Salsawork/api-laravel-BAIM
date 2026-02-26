@@ -32,6 +32,8 @@ return new class extends Migration
         
             $table->dateTime('started_at')->nullable();
             $table->dateTime('ended_at')->nullable();
+            $table->unsignedBigInteger('schedule_id')->nullable()->after('mentor_id');
+
         
             $table->timestamps();
         

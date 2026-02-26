@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use App\Models\User;
+use App\Models\Schedule;
 
 class Consultation extends Model
 
@@ -16,14 +17,16 @@ class Consultation extends Model
         'mentor_id',
         'service_type_id',
         'topic_category_id',
-        'departure_date',
         'schedule_id',
+
         'price',
         'duration_minutes',
-
-        'people_count',
-        'package_price',
+        'duration_hours',
         'total_price',
+
+        //muthowif
+        'scheduled_start',
+        'scheduled_end',
 
         'status',
         'payment_status',
@@ -56,8 +59,13 @@ class Consultation extends Model
     }
 
     public function mentor()
-{
-    return $this->belongsTo(Mentor::class,'mentor_id');
-}
+    {
+        return $this->belongsTo(Mentor::class,'mentor_id');
+    }
+
+    public function schedule()
+    {
+        return $this->belongsTo(Schedule::class,'schedule_id');
+    }
 
 }

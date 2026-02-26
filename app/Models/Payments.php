@@ -14,9 +14,15 @@ class Payments extends Model
         'xendit_external_id',
         'service_price',
         'platform_fee',
+        'app_service_fee',
+        'mentor_receive',
         'total',
         'status',
-        'paid_at'
+        'paid_at',
+
+        'refund_amount',
+        'refund_status',
+        'refunded_at'
     ];
 
     public function consultation()

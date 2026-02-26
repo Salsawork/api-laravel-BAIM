@@ -45,60 +45,43 @@ class PaymentController extends Controller
             'bank_holder_name' => 'required|string|max:100'
         ]);
     
-        $consult = Consultation::find($consultationId);
+        $consult = Consultation::with('mentor')->find($consultationId);
     
         if(!$consult){
-            return response()->json([
-                'success'=>false,
-                'message'=>'Consultation tidak ditemukan'
-            ],404);
+            return response()->json(['success'=>false,'message'=>'Consultation tidak ditemukan'],404);
         }
     
-        $userId = auth()->id();
-    
-        // bukan user pemilik
-        if($consult->customer_user_id != $userId){
-            return response()->json([
-                'success'=>false,
-                'message'=>'Hanya user pemesan yang boleh bayar'
-            ],403);
+        if($consult->customer_user_id != auth()->id()){
+            return response()->json(['success'=>false,'message'=>'Bukan pemilik'],403);
         }
     
-        // mentor tidak boleh bayar
-        if(Mentor::where('user_id',$userId)->exists()){
-            return response()->json([
-                'success'=>false,
-                'message'=>'Akun mentor tidak bisa melakukan pembayaran'
-            ],403);
-        }
-    
-        // sudah dibayar
         if($consult->payment_status == 'paid'){
-            return response()->json([
-                'success'=>false,
-                'message'=>'Consultation sudah dibayar'
-            ],400);
+            return response()->json(['success'=>false,'message'=>'Sudah dibayar'],400);
         }
+      
+        $servicePrice = $consult->total_price;
+
+        $flatFee = Fee::getValue('app_fee_flat',2000);      // biaya user
+        $percent = Fee::getValue('app_fee_percent',12.5);   // potongan mentor
     
-        $amount = $consult->mentor->user_type_id == 1
-        ? $consult->total_price   // muthowif
-        : $consult->price;        // konsultan
-
-        $fee = Fee::where('key_name','app_fee')->value('value') ?? 0;
-
-        $payment = Payments::firstOrCreate(
+        $platformFee   = ($percent/100) * $servicePrice;
+        $mentorReceive = $servicePrice - $platformFee;
+        $totalUserPay  = $servicePrice + $flatFee;
+        
+        $payment = Payments::updateOrCreate(
             ['consultation_id'=>$consult->id],
             [
                 'payment_method_id'=>1,
-                'service_price'=>$amount,
-                'platform_fee'=>$fee,
-                'total'=>$amount,
+                'service_price'=>$servicePrice,
+                'platform_fee'=>$platformFee,
+                'app_service_fee'=>$flatFee,
+                'mentor_receive'=>$mentorReceive,
+                'total'=>$totalUserPay,
                 'status'=>'pending'
             ]
         );
-
     
-        // upload file
+        // upload bukti
         $file = $request->file('proof_image');
         $filename = 'manual_'.$consult->id.'_'.time().'.'.$file->getClientOriginalExtension();
         $file->move(public_path('uploads/manual_payments'), $filename);
@@ -115,33 +98,30 @@ class PaymentController extends Controller
     
         return response()->json([
             'success'=>true,
-            'message'=>'Bukti transfer berhasil dikirim, menunggu verifikasi admin'
+            'total_bayar'=>$totalUserPay,
+            'message'=>'Upload bukti berhasil, tunggu verifikasi admin'
         ]);
-    }    
+    }
 
     public function verifyManual($paymentId)
     {
         DB::beginTransaction();
 
         try{
-
-            $payment = Payments::lockForUpdate()->find($paymentId);
-            $consult = Consultation::lockForUpdate()->find($payment->consultation_id);
-            $mentor  = Mentor::lockForUpdate()->find($consult->mentor_id);
+            $payment = Payments::lockForUpdate()->findOrFail($paymentId);
+            $consult = Consultation::lockForUpdate()->findOrFail($payment->consultation_id);
+            $mentor  = Mentor::lockForUpdate()->findOrFail($consult->mentor_id);
 
             if($consult->payment_status == 'paid'){
                 DB::commit();
                 return response()->json(['success'=>true,'message'=>'Already verified']);
             }
 
-            // slot sudah diambil?
-            if(
-                $mentor->current_consultation_id &&
-                $mentor->current_consultation_id != $consult->id
-            ){
+            // mentor sedang dipakai?
+            if($mentor->current_consultation_id && $mentor->current_consultation_id != $consult->id){
                 $payment->update(['status'=>'failed']);
                 DB::commit();
-                return response()->json(['success'=>false,'message'=>'Slot taken']);
+                return response()->json(['success'=>false,'message'=>'Mentor busy']);
             }
 
             // PAYMENT SUCCESS
@@ -150,23 +130,34 @@ class PaymentController extends Controller
                 'paid_at'=>now()
             ]);
 
-            $mentor->update([
-                'current_consultation_id'=>$consult->id
-            ]);
+            // REALTIME SESSION
+            if(is_null($consult->scheduled_start)){
 
-            // start session + buffer 10 menit
-            $consult->update([
-                'payment_status'=>'paid',
-                'status'=>'active',
-                'started_at'=>now(),
-                'ended_at'=>now()->addMinutes($consult->duration_minutes + 10)
-            ]);
+                $consult->update([
+                    'payment_status'=>'paid',
+                    'status'=>'active',
+                    'started_at'=>now(),
+                    'ended_at'=>now()->addMinutes($consult->duration_minutes)
+                ]);
+
+                $mentor->update([
+                    'current_consultation_id'=>$consult->id
+                ]);
+
+            }else{
+
+                // SCHEDULED (TUNGGU WAKTU)
+                $consult->update([
+                    'payment_status'=>'paid',
+                    'status'=>'pending'
+                ]);
+            }
 
             DB::commit();
 
             return response()->json([
                 'success'=>true,
-                'message'=>'Payment verified & session started'
+                'message'=>'Payment verified'
             ]);
 
         }catch(\Exception $e){
@@ -175,7 +166,318 @@ class PaymentController extends Controller
         }
     }
 
-    // public function verifyManual($paymentId)
+    // Create Payment xendit User
+    public function paymentXendit($consultationId)
+    {
+        Configuration::setXenditKey(config('services.xendit.secret_key'));
+    
+        $consult = Consultation::with('mentor','customer')->findOrFail($consultationId);
+    
+        if($consult->payment_status == 'paid'){
+            return response()->json(['message'=>'Sudah dibayar'],400);
+        }
+
+        $mentor = $consult->mentor;
+
+        if($mentor->user_type_id == 1){
+            // ===== MUTHOWIF =====
+            if(!$consult->schedule){
+                return response()->json(['message'=>'Schedule tidak ditemukan'],400);
+            }
+    
+            $servicePrice = $consult->schedule->price * $consult->duration_hours;
+    
+        }else{
+            // ===== KONSULTAN =====
+            $servicePrice = $consult->total_price;
+        }
+        $flatFee = Fee::getValue('app_fee_flat',2000);
+        $percent = Fee::getValue('app_fee_percent',12.5);
+    
+        $platformFee = ($percent/100)*$servicePrice;
+        $mentorReceive = $servicePrice - $platformFee;
+        $totalUserPay = $servicePrice + $flatFee;
+    
+        $api = new InvoiceApi();
+    
+        $invoice = $api->createInvoice(new CreateInvoiceRequest([
+            'external_id'=>$consult->order_number,
+            'amount'=>(int)$totalUserPay,
+            'description'=>'BAIM Payment',
+            'currency'=>'IDR',
+            'customer'=>[
+                'given_names'=>$consult->customer->name,
+                'email'=>$consult->customer->email
+            ]
+        ]));
+    
+        Payments::create([
+            'consultation_id'=>$consult->id,
+            'xendit_invoice_id'=>$invoice['id'],
+            'xendit_external_id'=>$consult->order_number,
+            'payment_method_id'=>2,
+            'service_price'=>$servicePrice,
+            'platform_fee'=>$platformFee,
+            'mentor_receive'=>$mentorReceive,
+            'total'=>$totalUserPay,
+            'status'=>'pending'
+        ]);
+    
+        return response()->json([
+            'invoice_url'=>$invoice['invoice_url'],
+            'total_bayar'=>$totalUserPay
+        ]);
+    }
+
+    // WEBHOOK XENDIT
+    public function handle(Request $request)
+    {
+        if ($request->header('x-callback-token') !== config('services.xendit.callback_token')) {
+            return response()->json(['message'=>'invalid token'],403);
+        }
+    
+        $externalId = $request->external_id;
+        $status = $request->status;
+    
+        $payment = Payments::where('xendit_external_id',$externalId)->first();
+        if(!$payment) return response()->json(['ok'=>true]);
+    
+        if($status == 'PAID'){
+            DB::beginTransaction();
+    
+            try{
+                $payment = Payments::lockForUpdate()->find($payment->id);
+                $consult = Consultation::lockForUpdate()->find($payment->consultation_id);
+                $mentor  = Mentor::lockForUpdate()->find($consult->mentor_id);
+    
+                if($consult->payment_status=='paid'){
+                    DB::commit();
+                    return response()->json(['ok'=>true]);
+                }
+    
+                if($mentor->current_consultation_id && $mentor->current_consultation_id != $consult->id){
+                    $payment->update(['status'=>'failed']);
+                    DB::commit();
+                    return response()->json(['ok'=>true]);
+                }
+    
+                $payment->update([
+                    'status'=>'paid',
+                    'paid_at'=>now()
+                ]);
+    
+                if(is_null($consult->scheduled_start)){
+                    // realtime
+                    $consult->update([
+                        'payment_status'=>'paid',
+                        'status'=>'active',
+                        'started_at'=>now(),
+                        'ended_at'=>now()->addMinutes($consult->duration_minutes)
+                    ]);
+    
+                    $mentor->update([
+                        'current_consultation_id'=>$consult->id
+                    ]);
+                }else{
+                    // scheduled
+                    $consult->update([
+                        'payment_status'=>'paid',
+                        'status'=>'pending'
+                    ]);
+                }
+    
+                DB::commit();
+            }catch(\Exception $e){
+                DB::rollBack();
+            }
+        }
+    
+        if($status == 'EXPIRED'){
+            $payment->update(['status'=>'expired']);
+    
+            Consultation::where('id',$payment->consultation_id)
+                ->update([
+                    'payment_status'=>'expired',
+                    'status'=>'cancelled'
+                ]);
+        }
+    
+        return response()->json(['success'=>true]);
+    }
+
+     // CEK STATUS Payment
+     public function checkStatus($orderNumber)
+     {
+         $consult = Consultation::with('mentor')
+             ->where('order_number',$orderNumber)
+             ->first();
+     
+         if(!$consult){
+             return response()->json([
+                 'success'=>false,
+                 'message'=>'Consultation not found'
+             ],404);
+         }
+     
+         $userId = auth()->id();
+     
+         // cek customer
+         if($consult->customer_user_id == $userId){
+             return response()->json([
+                 'success'=>true,
+                 'role'=>'customer',
+                 'status'=>$consult->status,
+                 'payment_status'=>$consult->payment_status
+             ]);
+         }
+     
+         // cek mentor
+         if($consult->mentor && $consult->mentor->user_id == $userId){
+             return response()->json([
+                 'success'=>true,
+                 'role'=>'mentor',
+                 'status'=>$consult->status,
+                 'payment_status'=>$consult->payment_status
+             ]);
+         }
+     
+         // bukan keduanya
+         return response()->json([
+             'success'=>false,
+             'message'=>'Not allowed'
+         ],403);
+     }
+
+    public function requestRefund($consultationId)
+    {
+        DB::beginTransaction();
+
+        try {
+
+            $consult = Consultation::lockForUpdate()
+                ->with('payment')
+                ->findOrFail($consultationId);
+
+            if($consult->customer_user_id != auth()->id()){
+                return response()->json(['message'=>'Not allowed'],403);
+            }
+
+            if($consult->status != 'pending'){
+                return response()->json([
+                    'message'=>'Refund hanya bisa sebelum session dimulai'
+                ],422);
+            }
+
+            if($consult->payment_status != 'paid'){
+                return response()->json([
+                    'message'=>'Belum ada pembayaran'
+                ],422);
+            }
+
+            $payment = $consult->payment;
+
+            if($payment->refund_status != 'none'){
+                return response()->json([
+                    'message'=>'Refund already requested'
+                ],422);
+            }
+
+            // tandai pending refund
+            $payment->update([
+                'refund_status'=>'pending',
+                'refund_amount'=>$payment->total
+            ]);
+
+            $consult->update([
+                'status'=>'cancelled'
+            ]);
+
+            DB::commit();
+
+            return response()->json([
+                'success'=>true,
+                'message'=>'Refund request submitted'
+            ]);
+
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            return response()->json(['error'=>$e->getMessage()],500);
+        }
+    }
+    // public function paymentXendit($consultationId)
+    // {
+    //     Configuration::setXenditKey(config('services.xendit.secret_key'));
+    //     $consultation = Consultation::with('customer')->findOrFail($consultationId);
+
+    //     if(!$consultation){
+    //         return response()->json([
+    //             'success'=>false,
+    //             'message'=>'Consultation tidak ditemukan'
+    //         ],404);
+    //     }
+    
+    //     $userId = auth()->id();
+    
+    //     // bukan pemilik consultation
+    //     if($consultation->customer_user_id != $userId){
+    //         return response()->json([
+    //             'success'=>false,
+    //             'message'=>'Hanya user pemesan yang boleh melakukan pembayaran'
+    //         ],403);
+    //     }
+    
+    //     // kalau mentor login
+    //     $mentor = Mentor::where('user_id',$userId)->first();
+    //     if($mentor){
+    //         return response()->json([
+    //             'success'=>false,
+    //             'message'=>'Akun mentor tidak dapat melakukan pembayaran'
+    //         ],403);
+    //     }
+
+    //     // kalau consultation sudah dibayar
+    //     if ($consultation->payment_status == 'paid') {
+    //         return response()->json([
+    //             'message' => 'Sudah dibayar'
+    //         ], 400);
+    //     }
+
+    //     $user = $consultation->customer;
+
+    //     $apiInstance = new InvoiceApi();
+
+    //     $createInvoice = new CreateInvoiceRequest([
+    //         'external_id' => $consultation->order_number,
+    //         'amount' => (int) $consultation->price,
+    //         'description' => 'BAIM Consultation',
+    //         'invoice_duration' => 3600,
+    //         'currency' => 'IDR',
+    //         'customer' => [
+    //             'given_names' => $user->name ?? 'User',
+    //             'email' => $user->email ?? 'user@mail.com'
+    //         ]
+    //     ]);
+
+    //     $result = $apiInstance->createInvoice($createInvoice);
+    //     $fee = Fee::where('key_name','app_fee')->value('value') ?? 0;
+
+    //     Payments::create([
+    //         'consultation_id' => $consultation->id,
+    //         'xendit_invoice_id' => $result['id'],
+    //         'xendit_external_id' => $consultation->order_number,
+    //         'payment_method_id' => 2,
+    //         'service_price' => $consultation->price,
+    //         'platform_fee' => $fee,
+    //         'total' => $consultation->price ,
+    //         'status' => 'pending'
+    //     ]);
+
+    //     return response()->json([
+    //         'invoice_url' => $result['invoice_url']
+    //     ]);
+    // }
+
+     // public function verifyManual($paymentId)
     // {
     //     DB::beginTransaction();
     
@@ -283,283 +585,7 @@ class PaymentController extends Controller
     //     }
     // }
     
-
-    // Create Payment xendit User
-    public function paymentXendit($consultationId)
-    {
-        Configuration::setXenditKey(config('services.xendit.secret_key'));
-
-        $consult = Consultation::with('customer','mentor')->findOrFail($consultationId);
-
-        if($consult->payment_status == 'paid'){
-            return response()->json(['message'=>'Sudah dibayar'],400);
-        }
-
-        // ===============================
-        // 🔥 HITUNG TOTAL
-        // ===============================
-        $amount = $consult->mentor->user_type_id == 1
-            ? $consult->total_price
-            : $consult->price;
-
-        $api = new InvoiceApi();
-
-        $createInvoice = new CreateInvoiceRequest([
-            'external_id' => $consult->order_number,
-            'amount' => (int)$amount,
-            'description' => 'BAIM Payment',
-            'invoice_duration' => 3600,
-            'currency' => 'IDR',
-            'customer' => [
-                'given_names' => $consult->customer->name ?? 'User',
-                'email' => $consult->customer->email ?? 'user@mail.com'
-            ]
-        ]);
-
-        $result = $api->createInvoice($createInvoice);
-
-        $fee = Fee::where('key_name','app_fee')->value('value') ?? 0;
-
-        Payments::create([
-            'consultation_id'=>$consult->id,
-            'xendit_invoice_id'=>$result['id'],
-            'xendit_external_id'=>$consult->order_number,
-            'payment_method_id'=>2,
-            'service_price'=>$amount,
-            'platform_fee'=>$fee,
-            'total'=>$amount,
-            'status'=>'pending'
-        ]);
-
-        return response()->json([
-            'invoice_url'=>$result['invoice_url']
-        ]);
-    }
-
-    // public function paymentXendit($consultationId)
-    // {
-    //     Configuration::setXenditKey(config('services.xendit.secret_key'));
-    //     $consultation = Consultation::with('customer')->findOrFail($consultationId);
-
-    //     if(!$consultation){
-    //         return response()->json([
-    //             'success'=>false,
-    //             'message'=>'Consultation tidak ditemukan'
-    //         ],404);
-    //     }
-    
-    //     $userId = auth()->id();
-    
-    //     // bukan pemilik consultation
-    //     if($consultation->customer_user_id != $userId){
-    //         return response()->json([
-    //             'success'=>false,
-    //             'message'=>'Hanya user pemesan yang boleh melakukan pembayaran'
-    //         ],403);
-    //     }
-    
-    //     // kalau mentor login
-    //     $mentor = Mentor::where('user_id',$userId)->first();
-    //     if($mentor){
-    //         return response()->json([
-    //             'success'=>false,
-    //             'message'=>'Akun mentor tidak dapat melakukan pembayaran'
-    //         ],403);
-    //     }
-
-    //     // kalau consultation sudah dibayar
-    //     if ($consultation->payment_status == 'paid') {
-    //         return response()->json([
-    //             'message' => 'Sudah dibayar'
-    //         ], 400);
-    //     }
-
-    //     $user = $consultation->customer;
-
-    //     $apiInstance = new InvoiceApi();
-
-    //     $createInvoice = new CreateInvoiceRequest([
-    //         'external_id' => $consultation->order_number,
-    //         'amount' => (int) $consultation->price,
-    //         'description' => 'BAIM Consultation',
-    //         'invoice_duration' => 3600,
-    //         'currency' => 'IDR',
-    //         'customer' => [
-    //             'given_names' => $user->name ?? 'User',
-    //             'email' => $user->email ?? 'user@mail.com'
-    //         ]
-    //     ]);
-
-    //     $result = $apiInstance->createInvoice($createInvoice);
-    //     $fee = Fee::where('key_name','app_fee')->value('value') ?? 0;
-
-    //     Payments::create([
-    //         'consultation_id' => $consultation->id,
-    //         'xendit_invoice_id' => $result['id'],
-    //         'xendit_external_id' => $consultation->order_number,
-    //         'payment_method_id' => 2,
-    //         'service_price' => $consultation->price,
-    //         'platform_fee' => $fee,
-    //         'total' => $consultation->price ,
-    //         'status' => 'pending'
-    //     ]);
-
-    //     return response()->json([
-    //         'invoice_url' => $result['invoice_url']
-    //     ]);
-    // }
-
-    // WEBHOOK XENDIT
-    public function handle(Request $request)
-    {
-
-        $callbackToken = config('services.xendit.callback_token');
-    
-        if ($request->header('x-callback-token') !== $callbackToken) {
-            return response()->json(['message'=>'invalid token'],403);
-        }
-    
-        $data = $request->all();
-    
-        $externalId = $data['external_id'] ?? null;
-        $status = $data['status'] ?? null;
-    
-        if (!$externalId) return response()->json(['ok'=>true]);
-    
-        $payment = Payments::where('xendit_external_id',$externalId)->first();
-        if (!$payment) return response()->json(['ok'=>true]);
-    
-        if ($payment->status == 'paid') {
-            return response()->json(['ok'=>true]);
-        }
-    
-        // ambil method xendit
-        $method = PaymentMethod::where('code','xendit')->first();
-    
-        if ($status == 'PAID') {
-
-            DB::beginTransaction();
-        
-            try{
-        
-                $payment = Payments::lockForUpdate()->find($payment->id);
-                $consult = Consultation::lockForUpdate()->find($payment->consultation_id);
-        
-                // webhook retry safety
-                if($consult->payment_status == 'paid'){
-                    DB::commit();
-                    return response()->json(['success'=>true]);
-                }
-
-                // kunci ketersediaan mentor
-                $mentor = Mentor::lockForUpdate()->find($consult->mentor_id);
-        
-                if(!$mentor){
-                    DB::rollBack();
-                    return response()->json(['error'=>'mentor not found']);
-                }
-                
-                // cek apakah slot masih tersedia
-                if(
-                    $mentor->current_consultation_id && 
-                    $mentor->current_consultation_id != $consult->id
-                ){
-                    // terlambat bayar
-                    $payment->update(['status'=>'failed']);
-                
-                    DB::commit();
-                
-                    return response()->json([
-                        'success'=>true,
-                        'message'=>'slot already taken by another user'
-                    ]);
-                }
-        
-                // PAYMENT SUCCESS
-                $payment->update([
-                    'status'=>'paid',
-                    'paid_at'=>now(),
-                    'payment_method_id'=>$method->id ?? null
-                ]);
-        
-                // kunci slot ke mentor
-                $mentor->update([
-                    'current_consultation_id'=>$consult->id
-                ]);
-        
-                // auto mulai konsultasi
-                $consult->update([
-                    'payment_status'=>'paid',
-                    'status'=>'active',
-                    'started_at'=>now(),
-                    'ended_at'=>now()->addMinutes($consult->duration_minutes + 10)
-                ]);
-        
-                DB::commit();
-        
-            } catch(\Exception $e){
-                DB::rollBack();
-                return response()->json(['error'=>$e->getMessage()]);
-            }
-        }
-            
-        
-        if ($status == 'EXPIRED') {
-    
-            $payment->update(['status'=>'expired']);
-    
-            Consultation::where('id',$payment->consultation_id)
-                ->update([
-                    'payment_status'=>'expired',
-                    'status'=>'cancelled'
-                ]);
-        }
-    
-        return response()->json(['success'=>true]);
-    }
-    
-    // CEK STATUS Payment
-    public function checkStatus($orderNumber)
-    {
-        $consult = Consultation::with('mentor')
-            ->where('order_number',$orderNumber)
-            ->first();
-    
-        if(!$consult){
-            return response()->json([
-                'success'=>false,
-                'message'=>'Consultation not found'
-            ],404);
-        }
-    
-        $userId = auth()->id();
-    
-        // cek customer
-        if($consult->customer_user_id == $userId){
-            return response()->json([
-                'success'=>true,
-                'role'=>'customer',
-                'status'=>$consult->status,
-                'payment_status'=>$consult->payment_status
-            ]);
-        }
-    
-        // cek mentor
-        if($consult->mentor && $consult->mentor->user_id == $userId){
-            return response()->json([
-                'success'=>true,
-                'role'=>'mentor',
-                'status'=>$consult->status,
-                'payment_status'=>$consult->payment_status
-            ]);
-        }
-    
-        // bukan keduanya
-        return response()->json([
-            'success'=>false,
-            'message'=>'Not allowed'
-        ],403);
-    }
+   
     
     // Tanpa verify
     // public function paymentManual(Request $request, $consultationId)

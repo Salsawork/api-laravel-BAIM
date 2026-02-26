@@ -6,14 +6,16 @@ use Illuminate\Database\Eloquent\Model;
 
 class Schedule extends Model
 {
-    protected $table = 'schedules';
+    protected $table = 'mentor_schedules';
 
-   protected $fillable = [
+    protected $fillable = [
         'mentor_id',
+        'day_of_week',
         'date',
         'start_time',
         'end_time',
-        'is_booked',
+        'price',
+        'is_active'
     ];
 
     public function mentor()

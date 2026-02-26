@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Carbon\Carbon;
 
 use App\Models\Mentor;
 use App\Models\MentorTopic;
@@ -23,7 +24,10 @@ class MentorController extends Controller
             'age' => 'required|integer|min:18',
             'experience_years' => 'required|integer|min:0',
             'description' => 'required|string',
-            'ktp_photo' => 'required|image|mimes:jpg,jpeg,png|max:2048',
+            'ktp_photo' => 'nullable|image|mimes:jpg,jpeg,png|max:2048',
+
+
+            'upload_resume' => 'nullable|file|mimes:pdf,doc,docx|max:2048',
     
             'bank_id' => 'required|exists:mst_bank,id_bank',
             'bank_account' => 'required|string|max:50',
@@ -94,6 +98,15 @@ class MentorController extends Controller
                 $file->move(public_path('uploads/ktp'), $filename);
                 $ktpPath = 'uploads/ktp/'.$filename;
             }
+
+            $resumePath = null;
+
+            if($request->hasFile('upload_resume')){
+                $resumeFile = $request->file('upload_resume');
+                $resumeFilename = 'resume_'.$user->id.'_'.time().'.'.$resumeFile->getClientOriginalExtension();
+                $resumeFile->move(public_path('uploads/resume'), $resumeFilename);
+                $resumePath = 'uploads/resume/'.$resumeFilename;
+            }
     
             // CREATE MENTOR
             $mentor = Mentor::create([
@@ -104,6 +117,9 @@ class MentorController extends Controller
                 'experience_years' => $request->experience_years,
                 'description' => $request->description,
                 'ktp_photo' => $ktpPath,
+
+                'upload_resume' => $resumePath,
+
                 'bank_id' => $request->bank_id,
                 'bank_account' => $request->bank_account,
                 'bank_holder_name' => $request->bank_holder_name,
@@ -169,25 +185,37 @@ class MentorController extends Controller
         }
     }
     
-    public function listMentors(Request $request)
+     public function listMentors(Request $request)
     {
         $query = Mentor::query()
-        ->where('is_verified', 1)
-        ->where('is_online', 1)
-        ->whereNull('current_consultation_id');
+            ->where('is_verified', 1)
+            ->where('is_online', 1)
     
+            // Mentor tidak boleh sedang sesi aktif
+            ->whereDoesntHave('consultations', function ($q) {
+                $q->where(function ($q2) {
+                    $q2->where('status', 'active')
+                    ->orWhere(function ($q3) {
+                        $q3->where('status', 'pending')
+                           ->where('payment_status', 'paid');
+                    });
+                });
+            });
+    
+        // SEARCH
         if ($request->filled('search')) {
             $search = strtolower($request->search);
-    
             $query->whereRaw('LOWER(full_name) LIKE ?', ["%{$search}%"]);
         }
     
+        // FILTER TOPIC
         if ($request->filled('topic_id')) {
             $query->whereHas('topics', function ($q) use ($request) {
                 $q->where('topic_category_id', $request->topic_id);
             });
         }
     
+        // FILTER SERVICE
         if ($request->filled('service_type_id')) {
             $query->whereHas('services', function ($q) use ($request) {
                 $q->where('service_type_id', $request->service_type_id);
@@ -200,9 +228,8 @@ class MentorController extends Controller
                 'services.serviceType',
                 'topics.topic'
             ])
-            ->orderByDesc('is_online') // online paling atas
-            ->orderByDesc('rating_avg') // rating
-            ->orderByDesc('total_sessions') // populer
+            ->orderByDesc('rating_avg')
+            ->orderByDesc('total_sessions')
             ->get();
     
         return response()->json([
@@ -223,11 +250,6 @@ class MentorController extends Controller
             $query->where('is_online', 1);
         }
 
-        // optional search
-        if ($request->search) {
-            $query->where('full_name', 'like', '%' . $request->search . '%');
-        }
-
         $mentors = $query
             ->with([
                 'user:id,name,profile_photo_path',
@@ -242,7 +264,7 @@ class MentorController extends Controller
             'data' => $mentors
         ]);
     }
-
+    
     public function detail($id)
     {
         $mentor = Mentor::with([
@@ -389,7 +411,7 @@ class MentorController extends Controller
         }
     
         $query = Consultation::with([
-                'customer:id,name,email,phone,address,profile_photo_path',
+                'customer:id,name,email,profile_photo_path',
                 'payment:id,consultation_id,status,paid_at'
             ])
             ->where('mentor_id', $mentor->id);
@@ -451,7 +473,7 @@ class MentorController extends Controller
     
         // ambil consultation
         $consult = Consultation::with([
-            'customer:id,name,email,phone,address,profile_photo_path',
+            'customer:id,name,email,profile_photo_path',
             'payment:id,consultation_id,status,paid_at',
             'service:id,name',
             'topic:id,name'
@@ -479,5 +501,108 @@ class MentorController extends Controller
         ]);
     }
     
+     // get is_verified
+    public function isVerified()
+    {
+        $userId = auth()->id();
 
+        if (!$userId) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthorized'
+            ], 401);
+        }
+
+        $mentor = Mentor::where('user_id', $userId)->first();
+
+        // jika mentor belum dibuat
+        if (!$mentor) {
+            return response()->json([
+                'success' => true,
+                'is_verified' => false,
+                'message' => 'Mentor profile not found'
+            ]);
+        }
+
+        return response()->json([
+            'success' => true,
+            'is_verified' => (bool) $mentor->is_verified
+        ]);
+    }
+    
+    public function getAvailableSlots($mentorId, Request $request)
+    {
+        $request->validate([
+            'date' => 'required|date',
+            'duration_hours' => 'nullable|integer|min:1|max:12'
+        ]);
+    
+        $mentor = Mentor::find($mentorId);
+    
+        if(!$mentor){
+            return response()->json([
+                'status'=>false,
+                'message'=>'Mentor not found'
+            ],404);
+        }
+    
+        $schedule = Schedule::where('mentor_id',$mentor->id)
+            ->whereDate('date',$request->date)
+            ->where('is_active',1)
+            ->first();
+    
+        if(!$schedule){
+            return response()->json([
+                'status'=>false,
+                'message'=>'Tidak ada schedule di tanggal ini'
+            ],404);
+        }
+    
+        $duration = $request->duration_hours ?? 1;
+    
+        $scheduleStart = Carbon::parse($schedule->date.' '.$schedule->start_time);
+        $scheduleEnd   = Carbon::parse($schedule->date.' '.$schedule->end_time);
+    
+        $slots = [];
+    
+        $current = clone $scheduleStart;
+    
+        while($current < $scheduleEnd){
+    
+            $slotEnd = (clone $current)->addHours($duration);
+    
+            // jika durasi melebihi jam schedule, stop
+            if($slotEnd > $scheduleEnd){
+                break;
+            }
+    
+            // cek bentrok booking
+            $conflict = Consultation::where('mentor_id',$mentor->id)
+                ->where('status','active')
+                ->where(function($q) use ($current,$slotEnd){
+                    $q->whereBetween('scheduled_start',[$current,$slotEnd])
+                    ->orWhereBetween('scheduled_end',[$current,$slotEnd])
+                    ->orWhere(function($q2) use ($current,$slotEnd){
+                        $q2->where('scheduled_start','<=',$current)
+                           ->where('scheduled_end','>=',$slotEnd);
+                    });
+                })
+                ->exists();
+    
+            if(!$conflict){
+                $slots[] = $current->format('H:i');
+            }
+    
+            $current->addHour();
+        }
+    
+        return response()->json([
+            'status'=>true,
+            'mentor'=>$mentor->full_name,
+            'date'=>$request->date,
+            'price_per_hour'=>$schedule->price,
+            'duration_requested'=>$duration,
+            'slots'=>$slots
+        ]);
+    }
 }

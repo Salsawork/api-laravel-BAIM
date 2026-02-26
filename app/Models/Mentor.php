@@ -16,12 +16,14 @@ class Mentor extends Model
         'experience_years',
         'description',
         'ktp_photo',
+        'upload_resume',
         'bank_id',
         'bank_account',
         'bank_holder_name',
         'is_verified',
         'is_online',
         'rating_avg',
+        'rating_count',
         'total_sessions',
         'cooldown_minutes',
         'current_consultation_id',
@@ -59,6 +61,9 @@ class Mentor extends Model
     }
 
     // current_consultation_id
-    
+    public function consultations()
+    {
+        return $this->hasMany(Consultation::class, 'mentor_id');
+    }
 
 }
