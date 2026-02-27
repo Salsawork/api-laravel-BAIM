@@ -89,25 +89,46 @@ class MentorController extends Controller
     
         try {
     
+            $baseUploadPath = dirname(base_path()) . '/public_html/api-baim.baitullah.co.id/uploads';
+            
             // UPLOAD KTP
             $ktpPath = null;
-    
-            if($request->hasFile('ktp_photo')){
+            
+            if ($request->hasFile('ktp_photo')) {
+            
+                $ktpFolder = $baseUploadPath . '/ktp';
+            
+                if (!file_exists($ktpFolder)) {
+                    mkdir($ktpFolder, 0775, true);
+                }
+            
                 $file = $request->file('ktp_photo');
                 $filename = 'ktp_'.$user->id.'_'.time().'.'.$file->getClientOriginalExtension();
-                $file->move(public_path('uploads/ktp'), $filename);
-                $ktpPath = 'uploads/ktp/'.$filename;
+            
+                $file->move($ktpFolder, $filename);
+            
+                $ktpPath = $filename;
             }
-
+            
+            // UPLOAD RESUME
             $resumePath = null;
-
-            if($request->hasFile('upload_resume')){
+            
+            if ($request->hasFile('upload_resume')) {
+            
+                $resumeFolder = $baseUploadPath . '/resume';
+            
+                if (!file_exists($resumeFolder)) {
+                    mkdir($resumeFolder, 0775, true);
+                }
+            
                 $resumeFile = $request->file('upload_resume');
                 $resumeFilename = 'resume_'.$user->id.'_'.time().'.'.$resumeFile->getClientOriginalExtension();
-                $resumeFile->move(public_path('uploads/resume'), $resumeFilename);
-                $resumePath = 'uploads/resume/'.$resumeFilename;
+            
+                $resumeFile->move($resumeFolder, $resumeFilename);
+            
+                $resumePath = $resumeFilename;
             }
-    
+                
             // CREATE MENTOR
             $mentor = Mentor::create([
                 'user_id' => $user->id,
@@ -224,7 +245,7 @@ class MentorController extends Controller
     
         $mentors = $query
             ->with([
-                'user:id,name,profile_photo_path',
+                'user:id,name,email,phone,profile_photo_path',
                 'services.serviceType',
                 'topics.topic'
             ])
@@ -252,7 +273,7 @@ class MentorController extends Controller
 
         $mentors = $query
             ->with([
-                'user:id,name,profile_photo_path',
+                'user:id,name,email,phone,profile_photo_path',
                 'services.serviceType',
                 'topics.topic'
             ])
@@ -268,7 +289,7 @@ class MentorController extends Controller
     public function detail($id)
     {
         $mentor = Mentor::with([
-            'user:id,name,profile_photo_path',
+            'user:id,name,email,phone,profile_photo_path',
             'services.serviceType',
             'topics.topic'
         ])
@@ -473,7 +494,7 @@ class MentorController extends Controller
     
         // ambil consultation
         $consult = Consultation::with([
-            'customer:id,name,email,profile_photo_path',
+            'customer:id,name,email,phone,profile_photo_path',
             'payment:id,consultation_id,status,paid_at',
             'service:id,name',
             'topic:id,name'

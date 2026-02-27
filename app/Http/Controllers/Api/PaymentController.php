@@ -84,8 +84,14 @@ class PaymentController extends Controller
         // upload bukti
         $file = $request->file('proof_image');
         $filename = 'manual_'.$consult->id.'_'.time().'.'.$file->getClientOriginalExtension();
-        $file->move(public_path('uploads/manual_payments'), $filename);
-    
+        $destinationPath = dirname(base_path()) . '/public_html/api-baim.baitullah.co.id/manual_payments';
+        
+        if (!file_exists($destinationPath)) {
+            mkdir($destinationPath, 0775, true);
+        }
+        
+        $file->move($destinationPath, $filename);
+
         PaymentManual::updateOrCreate(
             ['payment_id'=>$payment->id],
             [
