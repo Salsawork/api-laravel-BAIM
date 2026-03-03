@@ -190,60 +190,59 @@ class ConsultationController extends Controller
                 ],409);
             }
 
-            // CEK MENTOR SEDANG SESI
-            // $busy = Consultation::where('mentor_id',$mentor->id)
-            // ->where(function($q){
-            //     $q->where('status','active')
-            //       ->orWhere(function($q2){
-            //           $q2->where('status','pending')
-            //              ->where('payment_status','paid');
-            //       });
-            // })
-            // ->where(function($q){
-            //     $q->whereNull('scheduled_start')
-            //     ->orWhere(function($q2){
-            //         $q2->whereNotNull('scheduled_start')
-            //             ->where('scheduled_start','<=',now())
-            //             ->where('scheduled_end','>=',now());
-            //     });
-            // })->exists();
-
-            // if($busy){
-            //     return response()->json([
-            //         'status'=>false,
-            //         'message'=>'Mentor sedang melayani user lain'
-            //     ],409);
-            // }
-
             // CEK SCHEDULE HARI INI
-            $schedule = Schedule::where('mentor_id',$mentor->id)
-                ->where('is_active',1)
-                ->whereDate('date',now()->toDateString())
-                ->first();
 
-            if(!$schedule){
-                return response()->json([
-                    'status'=>false,
-                    'message'=>'Mentor tidak memiliki jadwal hari ini'
-                ],422);
+            $mentorTz = $mentor->timezone ?? 'Asia/Jakarta';
+            $nowUtc = now()->utc();
+            
+            // ambil semua schedule aktif mentor
+            $schedules = Schedule::where('mentor_id', $mentor->id)
+                ->where('is_active', 1)
+                ->get();
+            
+            $validSchedule = null;
+            
+            foreach ($schedules as $schedule) {
+            
+                // convert schedule ke UTC berdasarkan timezone mentor
+                $scheduleStartUtc = Carbon::createFromFormat(
+                    'Y-m-d H:i:s',
+                    $schedule->date.' '.$schedule->start_time,
+                    $mentorTz
+                )->utc();
+            
+                $scheduleEndUtc = Carbon::createFromFormat(
+                    'Y-m-d H:i:s',
+                    $schedule->date.' '.$schedule->end_time,
+                    $mentorTz
+                )->utc();
+            
+                if ($nowUtc->between($scheduleStartUtc, $scheduleEndUtc)) {
+                    $validSchedule = [
+                        'start' => $scheduleStartUtc,
+                        'end'   => $scheduleEndUtc,
+                        'model' => $schedule
+                    ];
+                    break;
+                }
             }
-
-            $now = now();
-            $scheduleStart = Carbon::parse($schedule->date.' '.$schedule->start_time);
-            $scheduleEnd   = Carbon::parse($schedule->date.' '.$schedule->end_time);
-
-            if($now < $scheduleStart || $now > $scheduleEnd){
+            
+            if (!$validSchedule) {
                 return response()->json([
                     'status'=>false,
                     'message'=>'Diluar jam kerja mentor'
                 ],422);
             }
+            
+            $scheduleStart = $validSchedule['start'];
+            $scheduleEnd   = $validSchedule['end'];
+            $scheduleModel = $validSchedule['model'];
 
             // CEK DURASI TIDAK MELEBIHI SCHEDULE
             $duration = $request->duration_hours;
-            $endSession = $now->copy()->addHours($duration);
+            $endSessionUtc = $nowUtc->copy()->addHours($duration);
 
-            if($endSession > $scheduleEnd){
+            if($endSessionUtc->gt($scheduleEnd)){
                 return response()->json([
                     'status'=>false,
                     'message'=>'Durasi melebihi jam schedule mentor'
@@ -278,7 +277,7 @@ class ConsultationController extends Controller
             // HITUNG HARGA
             if($mentor->user_type_id == 1){
                 // MUTHOWIF
-                $pricePerHour = $schedule->price;
+                $pricePerHour = $scheduleModel->price;
             }else{
                 // KONSULTAN
                 $service = MentorService::where('mentor_id',$mentor->id)
